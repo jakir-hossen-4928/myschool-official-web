@@ -9,6 +9,13 @@ interface ProtectedRouteProps {
   requiredRole?: 'admin' | 'staff' | 'student';
 }
 
+interface User {
+  id: string;
+  email: string | null;
+  name: string | null;
+  role: 'admin' | 'staff' | 'student';
+}
+
 export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -17,7 +24,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const user = await getCurrentUser();
+        const user = await getCurrentUser() as User | null;
         
         if (user) {
           setIsAuthenticated(true);

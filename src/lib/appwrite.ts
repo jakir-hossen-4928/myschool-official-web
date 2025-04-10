@@ -1,4 +1,3 @@
-
 import { Client, Account, Databases, Storage } from 'appwrite';
 
 // Create a client
