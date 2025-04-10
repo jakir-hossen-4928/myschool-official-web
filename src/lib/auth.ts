@@ -18,7 +18,7 @@ export interface User {
   role: 'admin' | 'staff' | 'student';
 }
 
-export const signIn = async (email: string, password: string): Promise<User> => {
+export const login = async (email: string, password: string): Promise<User> => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     
@@ -43,7 +43,7 @@ export const signIn = async (email: string, password: string): Promise<User> => 
   }
 };
 
-export const signUp = async (email: string, password: string, name: string, role: 'admin' | 'staff' | 'student' = 'student'): Promise<User> => {
+export const register = async (email: string, password: string, name: string, role: 'admin' | 'staff' | 'student' = 'student'): Promise<User> => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
@@ -67,7 +67,7 @@ export const signUp = async (email: string, password: string, name: string, role
   }
 };
 
-export const signOut = async (): Promise<void> => {
+export const logout = async (): Promise<void> => {
   try {
     await firebaseSignOut(auth);
   } catch (error) {
