@@ -7,21 +7,23 @@ import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "@/routes/routes";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { auth } from "./lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    // Check if Appwrite environment variables are set
-    if (!import.meta.env.VITE_APPWRITE_ENDPOINT || !import.meta.env.VITE_APPWRITE_PROJECT_ID) {
-      console.warn("Appwrite environment variables are not set correctly. Using default values.");
-      toast.warning(
-        "Appwrite configuration is incomplete. Some features may not work correctly.",
-        {
-          duration: 5000,
-        }
-      );
-    }
+    // Check Firebase authentication state
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log("User is signed in:", user.uid);
+      } else {
+        console.log("No user is signed in");
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   return (

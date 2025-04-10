@@ -11,6 +11,9 @@ import PublicLayout from "@/components/layout/PublicLayout";
 
 // Authentication
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
+import AdminRoute from "@/routes/StaffRoute";
+import StaffRoute from "@/routes/StaffRoute";
+import StudentRoute from "@/routes/StudentRoute";
 import AdminLogin from "@/authentication/AdminLogin";
 import Login from "@/authentication/Loging";
 import SignUp from "@/authentication/SignUp";
@@ -18,6 +21,8 @@ import SignUp from "@/authentication/SignUp";
 // Public pages
 import Index from "@/pages/Index";
 import NotFound from "@/pages/NotFound";
+import StudentDataCollection from "@/components/StudentDataCollection";
+import Assets from "@/components/Assets";
 
 // Lazy-loaded admin components
 const AdminOverview = lazy(() => import("@/adminDasboard/adminOverview/AdminOverview"));
@@ -29,15 +34,21 @@ const SmsService = lazy(() => import("@/adminDasboard/smsservcie/SmsService"));
 const ContentGanarator = lazy(() => import("@/adminDasboard/contentganarate/ContentGanarator"));
 const MySchoolChat = lazy(() => import("@/adminDasboard/myschool-chat/MySchoolChat"));
 
+// Lazy-loaded staff components
+const StaffDashboard = lazy(() => import("@/staffDashboard/StaffDashboard"));
+
+// Lazy-loaded student components
+const StudentDashboard = lazy(() => import("@/studentDashboard/StudentDashboard"));
+
 const AppRoutes = () => {
   return (
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<PublicLayout />}>
         <Route index element={<Index />} />
-        <Route path="about" element={<div>About Page</div>} />
+        <Route path="assets" element={<Assets />} />
+        <Route path="submit-student-data" element={<StudentDataCollection />} />
         <Route path="contact" element={<div>Contact Page</div>} />
-        <Route path="assets" element={<div>Assets Page</div>} />
       </Route>
 
       {/* Authentication routes */}
@@ -50,9 +61,9 @@ const AppRoutes = () => {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute requiredRole="admin">
+          <AdminRoute>
             <AdminLayout />
-          </ProtectedRoute>
+          </AdminRoute>
         }
       >
         <Route
@@ -125,12 +136,19 @@ const AppRoutes = () => {
       <Route
         path="/staff"
         element={
-          <ProtectedRoute requiredRole="staff">
+          <StaffRoute>
             <StaffLayout />
-          </ProtectedRoute>
+          </StaffRoute>
         }
       >
-        <Route index element={<div>Staff Dashboard</div>} />
+        <Route 
+          index 
+          element={
+            <Suspense fallback={<Loading />}>
+              <StaffDashboard />
+            </Suspense>
+          } 
+        />
         <Route path="students" element={<div>Staff Students Page</div>} />
         <Route path="classes" element={<div>Staff Classes Page</div>} />
         <Route path="schedules" element={<div>Staff Schedules Page</div>} />
@@ -144,12 +162,19 @@ const AppRoutes = () => {
       <Route
         path="/student"
         element={
-          <ProtectedRoute requiredRole="student">
+          <StudentRoute>
             <StudentLayout />
-          </ProtectedRoute>
+          </StudentRoute>
         }
       >
-        <Route index element={<div>Student Dashboard</div>} />
+        <Route 
+          index 
+          element={
+            <Suspense fallback={<Loading />}>
+              <StudentDashboard />
+            </Suspense>
+          } 
+        />
         <Route path="classes" element={<div>Student Classes Page</div>} />
         <Route path="assignments" element={<div>Student Assignments Page</div>} />
         <Route path="grades" element={<div>Student Grades Page</div>} />
