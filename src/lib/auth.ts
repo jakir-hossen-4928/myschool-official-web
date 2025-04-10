@@ -1,118 +1,152 @@
 
 import { 
-  createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  updateProfile
-} from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, db } from "./firebase";
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  GoogleAuthProvider,
+  signInWithPopup,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from './firebase';
 
-// Register a new user
-export const register = async (
-  email: string, 
-  password: string, 
-  name: string, 
-  role: "student" | "staff" | "admin" = "student"
-) => {
+// Define user interface
+export interface User {
+  id: string;
+  email: string | null;
+  name: string | null;
+  role: 'admin' | 'staff' | 'student';
+}
+
+export const signIn = async (email: string, password: string): Promise<User> => {
   try {
-    // Create the user in Firebase Authentication
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    
+    // Get user role and details from Firestore
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+    
+    if (!userDoc.exists()) {
+      throw new Error('User data not found');
+    }
+    
+    const userData = userDoc.data();
+    
+    return {
+      id: userCredential.user.uid,
+      email: userCredential.user.email,
+      name: userCredential.user.displayName,
+      role: userData.role || 'student',
+    };
+  } catch (error) {
+    console.error('Error signing in:', error);
+    throw error;
+  }
+};
+
+export const signUp = async (email: string, password: string, name: string, role: 'admin' | 'staff' | 'student' = 'student'): Promise<User> => {
+  try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // Update profile with name
-    await updateProfile(user, { displayName: name });
-
-    // Save additional user data in Firestore
-    await setDoc(doc(db, "users", user.uid), {
-      uid: user.uid,
+    
+    // Create a user document in Firestore
+    await setDoc(doc(db, 'users', userCredential.user.uid), {
       email,
       name,
       role,
-      createdAt: new Date().toISOString()
+      createdAt: serverTimestamp(),
     });
-
+    
     return {
-      id: user.uid,
-      email: user.email,
-      name: user.displayName,
-      role
+      id: userCredential.user.uid,
+      email: userCredential.user.email,
+      name,
+      role,
     };
-  } catch (error: any) {
-    console.error("Registration error:", error);
-    throw error;
-  }
-};
-
-// Login an existing user
-export const login = async (email: string, password: string) => {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // Get additional user data from Firestore
-    const userDoc = await getDoc(doc(db, "users", user.uid));
-    const userData = userDoc.data();
-
-    if (!userData) {
-      throw new Error("User data not found");
-    }
-
-    return {
-      id: user.uid,
-      email: user.email,
-      name: user.displayName || userData.name,
-      role: userData.role
-    };
-  } catch (error: any) {
-    console.error("Login error:", error);
-    throw error;
-  }
-};
-
-// Logout the current user
-export const logout = async () => {
-  try {
-    await signOut(auth);
-    return true;
   } catch (error) {
-    console.error("Logout error:", error);
+    console.error('Error signing up:', error);
     throw error;
   }
 };
 
-// Get the current authenticated user
-export const getCurrentUser = async () => {
-  return new Promise((resolve, reject) => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      unsubscribe();
-      
-      if (user) {
-        try {
-          // Get additional user data from Firestore
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          const userData = userDoc.data();
+export const signOut = async (): Promise<void> => {
+  try {
+    await firebaseSignOut(auth);
+  } catch (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+};
 
-          resolve({
-            id: user.uid,
-            email: user.email,
-            name: user.displayName || (userData?.name || ""),
-            role: userData?.role || "student"
-          });
+export const getCurrentUser = async (): Promise<User | null> => {
+  return new Promise((resolve, reject) => {
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      unsubscribe();
+      if (firebaseUser) {
+        try {
+          // Get user role from Firestore
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            resolve({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: firebaseUser.displayName || userData.name,
+              role: userData.role || 'student',
+            });
+          } else {
+            // If user doesn't have a document, create one with default role
+            await setDoc(doc(db, 'users', firebaseUser.uid), {
+              email: firebaseUser.email,
+              name: firebaseUser.displayName,
+              role: 'student',
+              createdAt: serverTimestamp(),
+            });
+            
+            resolve({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: firebaseUser.displayName,
+              role: 'student',
+            });
+          }
         } catch (error) {
-          console.error("Error fetching user data:", error);
           reject(error);
         }
       } else {
         resolve(null);
       }
-    }, reject);
+    });
   });
 };
 
-// Check if the user is logged in
-export const isLoggedIn = async () => {
-  const user = await getCurrentUser();
-  return !!user;
+export const signInWithGoogle = async (): Promise<User> => {
+  try {
+    const provider = new GoogleAuthProvider();
+    const userCredential = await signInWithPopup(auth, provider);
+    
+    // Check if user exists in Firestore
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+    
+    if (!userDoc.exists()) {
+      // Create new user document if it doesn't exist
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        email: userCredential.user.email,
+        name: userCredential.user.displayName,
+        role: 'student', // Default role
+        createdAt: serverTimestamp(),
+      });
+    }
+    
+    const userData = userDoc.exists() ? userDoc.data() : { role: 'student' };
+    
+    return {
+      id: userCredential.user.uid,
+      email: userCredential.user.email,
+      name: userCredential.user.displayName,
+      role: userData.role || 'student',
+    };
+  } catch (error) {
+    console.error('Error signing in with Google:', error);
+    throw error;
+  }
 };

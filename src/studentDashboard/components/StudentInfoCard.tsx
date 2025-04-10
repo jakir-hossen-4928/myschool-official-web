@@ -10,6 +10,13 @@ import { getCurrentUser } from '@/lib/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
+interface User {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role?: 'admin' | 'staff' | 'student';
+}
+
 interface StudentInfo {
   id: string;
   name: string;
@@ -31,7 +38,7 @@ const StudentInfoCard = () => {
   useEffect(() => {
     const fetchStudentInfo = async () => {
       try {
-        const user = await getCurrentUser();
+        const user = await getCurrentUser() as User | null;
         if (user) {
           const studentDoc = await getDoc(doc(db, "students", user.id));
           if (studentDoc.exists()) {
