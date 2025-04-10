@@ -47,7 +47,8 @@ export const register = async (email: string, password: string, name: string, ro
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
-    // Create a user document in Firestore
+    // Create a user document in Firestore with basic info
+    // More detailed info will be added from the registration form
     await setDoc(doc(db, 'users', userCredential.user.uid), {
       email,
       name,

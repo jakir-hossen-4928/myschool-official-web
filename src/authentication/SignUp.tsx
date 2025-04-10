@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EyeIcon, EyeOffIcon, LockIcon, MailIcon, UserIcon, BookIcon, BriefcaseIcon } from 'lucide-react';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 const SignUp = () => {
   const [email, setEmail] = useState('');
@@ -53,27 +55,56 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
+      // Register the user with Firebase Authentication
       const user = await register(email, password, name, role);
+      
+      // Store additional user data in Firestore
+      const userRef = doc(db, 'users', user.id);
+      
+      // Build the user data object based on role
+      const userData = {
+        email,
+        name,
+        role,
+        createdAt: serverTimestamp(),
+      };
+      
+      // Add role-specific fields
+      if (role === 'student') {
+        Object.assign(userData, {
+          studentClass,
+          englishName,
+          motherName,
+          fatherName,
+          phoneNumber
+        });
+      } else if (role === 'staff') {
+        Object.assign(userData, {
+          nameBangla,
+          nameEnglish,
+          subject,
+          designation,
+          nid,
+          mobile
+        });
+      }
+      
+      // Save to Firestore
+      await setDoc(userRef, userData);
       
       toast({
         title: "Registration successful",
         description: `Welcome, ${user.name}! Your account has been created.`,
       });
       
-      // Store additional fields in a database (this would typically be done via API)
+      // Navigate based on user role
       if (role === 'student') {
-        // TODO: Store student details through API
-        console.log("Student details:", {
-          studentClass, englishName, motherName, fatherName, phoneNumber
-        });
+        navigate('/student');
       } else if (role === 'staff') {
-        // TODO: Store staff details through API
-        console.log("Staff details:", {
-          nameBangla, nameEnglish, subject, designation, nid, mobile
-        });
+        navigate('/staff');
+      } else {
+        navigate('/');
       }
-      
-      navigate('/');
     } catch (error) {
       console.error("Registration error:", error);
       toast({

@@ -6,7 +6,6 @@ import { CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import ProgressCircle from "./ProgressCircle";
 
-// Fix the component content or create it if needed
 const StaffAssignmentsCard = () => {
   const assignments = [
     { id: 1, title: "Grade Mid-Term Papers", status: "completed", dueDate: "2023-03-15" },
