@@ -27,16 +27,23 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, Trash2Icon, PencilIcon, SearchIcon } from 'lucide-react';
+import {
+  Loader2,
+  Trash2Icon,
+  PencilIcon,
+  SearchIcon,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react';
 
-// Extend User interface to handle flat fields from your sample data
+// Extend User interface to handle flat fields and verified status
 interface ExtendedUser extends User {
-  verified?: boolean; // From your sample
-  staffId?: string; // Flat fields for admin/staff
+  verified: boolean; // Ensure verified is required
+  staffId?: string;
   designation?: string;
   joiningDate?: any; // Firestore Timestamp
   nid?: string;
-  photoUrl?: string; // Flat photoUrl for admin
+  photoUrl?: string;
 }
 
 const UserVerify: React.FC = () => {
@@ -46,7 +53,9 @@ const UserVerify: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [role, setRole] = useState<'admin' | 'staff' | 'student'>('student');
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'staff' | 'student'>('all');
+  const [roleFilter, setRoleFilter] = useState<
+    'all' | 'admin' | 'staff' | 'student'
+  >('all');
   const [studentData, setStudentData] = useState<StudentData>({
     studentId: '',
     name: '',
@@ -83,6 +92,7 @@ const UserVerify: React.FC = () => {
     nid: '',
     photoUrl: '',
   });
+  const [isVerified, setIsVerified] = useState(false); // New state for verified status in modal
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
@@ -128,6 +138,7 @@ const UserVerify: React.FC = () => {
   const handleEditClick = (user: ExtendedUser) => {
     setSelectedUser(user);
     setRole(user.role);
+    setIsVerified(user.verified);
 
     if (user.role === 'student' && user.studentData) {
       setStudentData({ ...user.studentData });
@@ -155,6 +166,32 @@ const UserVerify: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  // Handle toggle verify
+  const handleToggleVerify = async (user: ExtendedUser) => {
+    if (isProcessing) return;
+
+    setIsProcessing(true);
+    try {
+      const newVerifiedStatus = !user.verified;
+      await editUser(user.id, { verified: newVerifiedStatus });
+      toast({
+        title: 'Success',
+        description: `${user.name} has been ${newVerifiedStatus ? 'approved' : 'unapproved'}.`,
+      });
+      const updatedUsers = await getAllUsers();
+      setUsers(updatedUsers as ExtendedUser[]);
+      setFilteredUsers(updatedUsers as ExtendedUser[]);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to update verification status',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,7 +199,7 @@ const UserVerify: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      let updateData: Partial<ExtendedUser> = { role };
+      let updateData: Partial<ExtendedUser> = { role, verified: isVerified };
       if (role === 'student') {
         updateData.studentData = studentData;
         delete updateData.staffData;
@@ -278,6 +315,7 @@ const UserVerify: React.FC = () => {
                   <TableHead className="text-left">Name</TableHead>
                   <TableHead className="text-left">Email</TableHead>
                   <TableHead className="text-left">Role</TableHead>
+                  <TableHead className="text-left">Verified</TableHead>
                   <TableHead className="text-left">Role-Specific Info</TableHead>
                   <TableHead className="text-left">Actions</TableHead>
                 </TableRow>
@@ -285,7 +323,7 @@ const UserVerify: React.FC = () => {
               <TableBody>
                 {filteredUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-4 text-gray-500">
                       No users found.
                     </TableCell>
                   </TableRow>
@@ -309,6 +347,13 @@ const UserVerify: React.FC = () => {
                       <TableCell>{user.name || 'Unknown'}</TableCell>
                       <TableCell>{user.email || 'N/A'}</TableCell>
                       <TableCell>{user.role}</TableCell>
+                      <TableCell>
+                        {user.verified ? (
+                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <XCircle className="h-5 w-5 text-red-500" />
+                        )}
+                      </TableCell>
                       <TableCell>
                         {user.role === 'student' && user.studentData ? (
                           <div className="text-sm space-y-1">
@@ -357,6 +402,21 @@ const UserVerify: React.FC = () => {
                             Edit
                           </Button>
                           <Button
+                            variant={user.verified ? 'secondary' : 'default'}
+                            size="sm"
+                            onClick={() => handleToggleVerify(user)}
+                            disabled={isProcessing}
+                          >
+                            {isProcessing && selectedUser?.id === user.id ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : user.verified ? (
+                              <XCircle className="h-4 w-4 mr-1" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 mr-1" />
+                            )}
+                            {user.verified ? 'Unapprove' : 'Approve'}
+                          </Button>
+                          <Button
                             variant="destructive"
                             size="sm"
                             onClick={() => handleDelete(user.id, user.name || 'Unknown')}
@@ -400,6 +460,22 @@ const UserVerify: React.FC = () => {
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="staff">Staff</SelectItem>
                     <SelectItem value="student">Student</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-1 sm:col-span-2">
+                <Label htmlFor="verified">Verification Status</Label>
+                <Select
+                  value={isVerified ? 'verified' : 'unverified'}
+                  onValueChange={(value) => setIsVerified(value === 'verified')}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select verification status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="unverified">Unverified</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
