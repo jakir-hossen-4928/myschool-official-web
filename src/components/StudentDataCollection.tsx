@@ -54,9 +54,9 @@ const StudentDataCollection = () => {
       await new Promise(resolve => setTimeout(resolve, 2000));
       console.log("Form data submitted:", formData);
       console.log("File:", file);
-      
+
       toast.success("Student data submitted successfully");
-      
+
       // Reset form
       setFormData({
         name: "",
@@ -79,7 +79,7 @@ const StudentDataCollection = () => {
   // Animation variants
   const pageVariants = {
     initial: { opacity: 0 },
-    animate: { 
+    animate: {
       opacity: 1,
       transition: { duration: 0.5, ease: "easeInOut" }
     },
@@ -88,15 +88,15 @@ const StudentDataCollection = () => {
 
   const cardVariants = {
     initial: { y: 50, opacity: 0 },
-    animate: { 
-      y: 0, 
+    animate: {
+      y: 0,
       opacity: 1,
       transition: { duration: 0.6, ease: "easeOut" }
     }
   };
 
   return (
-    <motion.div 
+    <motion.div
       className="min-h-screen py-12 bg-gradient-to-b from-gray-100 to-gray-200"
       variants={pageVariants}
       initial="initial"
@@ -104,7 +104,7 @@ const StudentDataCollection = () => {
       exit="exit"
     >
       <div className="container mx-auto px-4">
-        <motion.div 
+        <motion.div
           className="max-w-3xl mx-auto"
           variants={cardVariants}
         >
@@ -121,24 +121,24 @@ const StudentDataCollection = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="name">Name (Bangla) <span className="text-red-500">*</span></Label>
-                    <Input 
-                      id="name" 
-                      name="name" 
-                      value={formData.name} 
-                      onChange={handleChange} 
-                      placeholder="নাম বাংলায়" 
-                      required 
+                    <Input
+                      id="name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      placeholder="নাম বাংলায়"
+                      required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="englishName">Name (English)</Label>
-                    <Input 
-                      id="englishName" 
-                      name="englishName" 
-                      value={formData.englishName} 
-                      onChange={handleChange} 
-                      placeholder="Name in English" 
+                    <Input
+                      id="englishName"
+                      name="englishName"
+                      value={formData.englishName}
+                      onChange={handleChange}
+                      placeholder="Name in English"
                     />
                   </div>
                 </div>
@@ -146,8 +146,8 @@ const StudentDataCollection = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="class">Class <span className="text-red-500">*</span></Label>
-                    <Select 
-                      value={formData.class} 
+                    <Select
+                      value={formData.class}
                       onValueChange={(value) => handleSelectChange("class", value)}
                     >
                       <SelectTrigger id="class">
@@ -170,15 +170,15 @@ const StudentDataCollection = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="number">Contact Number</Label>
-                    <Input 
-                      id="number" 
-                      name="number" 
-                      value={formData.number} 
-                      onChange={handleChange} 
-                      placeholder="+880 1XXX-XXXXXX" 
+                    <Input
+                      id="number"
+                      name="number"
+                      value={formData.number}
+                      onChange={handleChange}
+                      placeholder="+880 1XXX-XXXXXX"
                     />
                   </div>
                 </div>
@@ -186,35 +186,35 @@ const StudentDataCollection = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="fatherName">Father's Name</Label>
-                    <Input 
-                      id="fatherName" 
-                      name="fatherName" 
-                      value={formData.fatherName} 
-                      onChange={handleChange} 
-                      placeholder="Father's full name" 
+                    <Input
+                      id="fatherName"
+                      name="fatherName"
+                      value={formData.fatherName}
+                      onChange={handleChange}
+                      placeholder="Father's full name"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="motherName">Mother's Name</Label>
-                    <Input 
-                      id="motherName" 
-                      name="motherName" 
-                      value={formData.motherName} 
-                      onChange={handleChange} 
-                      placeholder="Mother's full name" 
+                    <Input
+                      id="motherName"
+                      name="motherName"
+                      value={formData.motherName}
+                      onChange={handleChange}
+                      placeholder="Mother's full name"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="description">Description/Notes</Label>
-                  <Textarea 
-                    id="description" 
-                    name="description" 
-                    value={formData.description} 
-                    onChange={handleChange} 
-                    placeholder="Any additional information..." 
+                  <Textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    placeholder="Any additional information..."
                     rows={3}
                   />
                 </div>
@@ -222,12 +222,12 @@ const StudentDataCollection = () => {
                 <div className="space-y-2">
                   <Label htmlFor="photo">Photo</Label>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <Input 
-                      id="photo" 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleFileChange} 
-                      className="hidden" 
+                    <Input
+                      id="photo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
                     />
                     <Label htmlFor="photo" className="cursor-pointer flex flex-col items-center justify-center">
                       <Upload className="h-10 w-10 text-gray-400 mb-2" />
@@ -245,8 +245,8 @@ const StudentDataCollection = () => {
               </CardContent>
 
               <CardFooter>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                   disabled={isSubmitting}
                 >
