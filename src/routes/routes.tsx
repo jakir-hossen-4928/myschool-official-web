@@ -1,4 +1,3 @@
-
 import React, { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import Loading from "@/components/loader/Loading";
@@ -11,11 +10,7 @@ import PublicLayout from "@/components/layout/PublicLayout";
 
 // Authentication
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
-import AdminRoute from "@/routes/StaffRoute";
-import StaffRoute from "@/routes/StaffRoute";
-import StudentRoute from "@/routes/StudentRoute";
-import AdminLogin from "@/authentication/AdminLogin";
-import Login from "@/authentication/Loging";
+import Login from "@/authentication/Loging"; // Assuming 'Loging' is a typo; should be 'Login'
 import SignUp from "@/authentication/SignUp";
 
 // Public pages
@@ -23,6 +18,8 @@ import Index from "@/pages/Index";
 import NotFound from "@/pages/NotFound";
 import StudentDataCollection from "@/components/StudentDataCollection";
 import Assets from "@/components/Assets";
+import ResetPassword from "@/authentication/ResetPassword";
+import UserVerify from "@/adminDasboard/usersverify/UserVerify";
 
 // Lazy-loaded admin components
 const AdminOverview = lazy(() => import("@/adminDasboard/adminOverview/AdminOverview"));
@@ -54,16 +51,16 @@ const AppRoutes = () => {
       {/* Authentication routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<SignUp />} />
-      <Route path="/admin-login" element={<AdminLogin />} />
-      <Route path="/reset-password" element={<div>Reset Password Page</div>} />
+      <Route path="/reset-password" element={<ResetPassword ></ResetPassword>} />
+      <Route path="/unauthorized" element={<div>Unauthorized Access - Please contact support</div>} />
 
       {/* Admin routes */}
       <Route
         path="/admin"
         element={
-          <AdminRoute>
+          <ProtectedRoute requiredRole="admin">
             <AdminLayout />
-          </AdminRoute>
+          </ProtectedRoute>
         }
       >
         <Route
@@ -79,6 +76,14 @@ const AppRoutes = () => {
           element={
             <Suspense fallback={<Loading />}>
               <Students />
+            </Suspense>
+          }
+        />
+        <Route
+          path="users-management"
+          element={
+            <Suspense fallback={<Loading />}>
+              <UserVerify/>
             </Suspense>
           }
         />
@@ -136,18 +141,18 @@ const AppRoutes = () => {
       <Route
         path="/staff"
         element={
-          <StaffRoute>
+          <ProtectedRoute requiredRole="staff">
             <StaffLayout />
-          </StaffRoute>
+          </ProtectedRoute>
         }
       >
-        <Route 
-          index 
+        <Route
+          index
           element={
             <Suspense fallback={<Loading />}>
               <StaffDashboard />
             </Suspense>
-          } 
+          }
         />
         <Route path="students" element={<div>Staff Students Page</div>} />
         <Route path="classes" element={<div>Staff Classes Page</div>} />
@@ -162,18 +167,18 @@ const AppRoutes = () => {
       <Route
         path="/student"
         element={
-          <StudentRoute>
+          <ProtectedRoute requiredRole="student">
             <StudentLayout />
-          </StudentRoute>
+          </ProtectedRoute>
         }
       >
-        <Route 
-          index 
+        <Route
+          index
           element={
             <Suspense fallback={<Loading />}>
               <StudentDashboard />
             </Suspense>
-          } 
+          }
         />
         <Route path="classes" element={<div>Student Classes Page</div>} />
         <Route path="assignments" element={<div>Student Assignments Page</div>} />
@@ -185,7 +190,7 @@ const AppRoutes = () => {
         <Route path="profile" element={<div>Student Profile Page</div>} />
       </Route>
 
-      {/* Catch all route */}
+      {/* Catch-all route */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

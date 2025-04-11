@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { register } from '@/lib/auth';
@@ -7,359 +6,264 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EyeIcon, EyeOffIcon, LockIcon, MailIcon, UserIcon, BookIcon, BriefcaseIcon } from 'lucide-react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { BookIcon, BriefcaseIcon, UploadIcon, UserIcon, LockIcon, MailIcon, EyeIcon, EyeOffIcon } from 'lucide-react';
+
+const CLASS_OPTIONS = ["নার্সারি", "প্লে", "প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ", "পঞ্চম", "ষষ্ঠ"];
 
 const SignUp = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<'student' | 'staff'>('student');
+  const [role, setRole] = useState<'student' | 'staff' | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
-  // Student specific fields
-  const [studentClass, setStudentClass] = useState('');
-  const [englishName, setEnglishName] = useState('');
-  const [motherName, setMotherName] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Student fields
+  const [studentId, setStudentId] = useState('');
+  const [className, setClassName] = useState('');
   const [fatherName, setFatherName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  
-  // Staff specific fields
-  const [nameBangla, setNameBangla] = useState('');
-  const [nameEnglish, setNameEnglish] = useState('');
-  const [subject, setSubject] = useState('');
-  const [designation, setDesignation] = useState('');
+  const [motherName, setMotherName] = useState('');
+
+  // Staff fields
+  const [staffId, setStaffId] = useState('');
   const [nid, setNid] = useState('');
-  const [mobile, setMobile] = useState('');
-  
+  const [designation, setDesignation] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const uploadImageToImgBB = async (file: File): Promise<string> => {
+    const IMAGE_HOST_KEY = import.meta.env.VITE_IMGBB_API_KEY;
+    if (!IMAGE_HOST_KEY) throw new Error('ImgBB API key not configured');
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    setUploadingImage(true);
+    try {
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMAGE_HOST_KEY}`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error('Error uploading image to ImgBB');
+      const data = await response.json();
+      return data.data.url;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const url = await uploadImageToImgBB(file);
+      setPhotoUrl(url);
+      toast({ title: "Image uploaded successfully!" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Image upload failed" });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    if (!role) {
+      toast({ variant: "destructive", title: "Please select your role" });
+      return;
+    }
     if (password !== confirmPassword) {
-      toast({
-        variant: "destructive",
-        title: "Passwords don't match",
-        description: "Please make sure your passwords match.",
-      });
+      toast({ variant: "destructive", title: "Passwords don't match" });
       return;
     }
 
     setIsLoading(true);
-
     try {
-      // Register the user with Firebase Authentication
-      const user = await register(email, password, name, role);
-      
-      // Store additional user data in Firestore
-      const userRef = doc(db, 'users', user.id);
-      
-      // Build the user data object based on role
-      const userData = {
-        email,
-        name,
-        role,
-        createdAt: serverTimestamp(),
+      const additionalData = role === 'student' ? {
+        studentId, class: className, fatherName, motherName, photoUrl
+      } : {
+        staffId, nid, designation, joiningDate: new Date(joiningDate), photoUrl
       };
-      
-      // Add role-specific fields
-      if (role === 'student') {
-        Object.assign(userData, {
-          studentClass,
-          englishName,
-          motherName,
-          fatherName,
-          phoneNumber
-        });
-      } else if (role === 'staff') {
-        Object.assign(userData, {
-          nameBangla,
-          nameEnglish,
-          subject,
-          designation,
-          nid,
-          mobile
-        });
-      }
-      
-      // Save to Firestore
-      await setDoc(userRef, userData);
-      
-      toast({
-        title: "Registration successful",
-        description: `Welcome, ${user.name}! Your account has been created.`,
-      });
-      
-      // Navigate based on user role
-      if (role === 'student') {
-        navigate('/student');
-      } else if (role === 'staff') {
-        navigate('/staff');
-      } else {
-        navigate('/');
-      }
+
+      await register(email, password, name, role, additionalData);
+      toast({ title: "Registration successful!" });
+      navigate(role === 'student' ? '/student' : '/staff');
     } catch (error) {
-      console.error("Registration error:", error);
-      toast({
-        variant: "destructive",
-        title: "Registration failed",
-        description: "There was an error creating your account. Please try again.",
-      });
+      toast({ variant: "destructive", title: "Registration failed" });
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (!role) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-school-light to-white p-4">
+        <div className="max-w-md w-full space-y-4">
+          <h2 className="text-3xl font-bold text-center text-school-primary">Join Our School</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <button
+              onClick={() => setRole('student')}
+              className="p-8 border-2 rounded-xl hover:border-school-primary transition-all flex flex-col items-center"
+            >
+              <BookIcon className="h-12 w-12 mb-4 text-school-primary" />
+              <h3 className="text-xl font-semibold">Student</h3>
+              <p className="text-muted-foreground">Create student account</p>
+            </button>
+            <button
+              onClick={() => setRole('staff')}
+              className="p-8 border-2 rounded-xl hover:border-school-primary transition-all flex flex-col items-center"
+            >
+              <BriefcaseIcon className="h-12 w-12 mb-4 text-school-primary" />
+              <h3 className="text-xl font-semibold">Staff</h3>
+              <p className="text-muted-foreground">Create staff account</p>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-school-light to-white p-4">
       <Card className="w-full max-w-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold text-school-primary">Create Your Account</CardTitle>
-          <CardDescription>Join our school portal to access resources and stay connected</CardDescription>
+          <CardTitle className="text-3xl font-bold text-school-primary">
+            {role === 'student' ? 'Student Registration' : 'Staff Registration'}
+          </CardTitle>
+          <CardDescription>
+            <button onClick={() => setRole(null)} className="text-school-primary hover:underline">
+              ← Change role
+            </button>
+          </CardDescription>
         </CardHeader>
-        
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            {/* Common Fields */}
             <div className="space-y-2">
-              <Label htmlFor="role">I am a:</Label>
-              <RadioGroup id="role" value={role} onValueChange={(value) => setRole(value as 'student' | 'staff')} className="flex gap-4">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="student" id="student" />
-                  <Label htmlFor="student" className="flex items-center gap-1">
-                    <BookIcon className="h-4 w-4" /> Student
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="staff" id="staff" />
-                  <Label htmlFor="staff" className="flex items-center gap-1">
-                    <BriefcaseIcon className="h-4 w-4" /> Staff
-                  </Label>
-                </div>
-              </RadioGroup>
+              <Label htmlFor="name"><UserIcon className="inline h-4 w-4" /> Full Name</Label>
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
-            
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                  <MailIcon className="h-5 w-5" />
-                </div>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="your.email@example.com"
-                  className="pl-10"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
+              <Label htmlFor="email"><MailIcon className="inline h-4 w-4" /> Email</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
-            
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password"><LockIcon className="inline h-4 w-4" /> Password</Label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                    <LockIcon className="h-5 w-5" />
-                  </div>
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    className="pl-10 pr-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
-                  <div 
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer text-gray-400 hover:text-gray-600"
+                  <button
+                    type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3"
                   >
-                    {showPassword ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-                  </div>
+                    {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
-              
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                    <LockIcon className="h-5 w-5" />
-                  </div>
-                  <Input
-                    id="confirmPassword"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    className="pl-10"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                  <UserIcon className="h-5 w-5" />
-                </div>
+                <Label htmlFor="confirmPassword"><LockIcon className="inline h-4 w-4" /> Confirm Password</Label>
                 <Input
-                  id="name"
-                  placeholder="Your full name"
-                  className="pl-10"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  id="confirmPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                 />
               </div>
             </div>
-            
-            {/* Role-specific fields */}
-            <Tabs defaultValue={role} value={role} onValueChange={(value) => setRole(value as 'student' | 'staff')}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="student">Student Details</TabsTrigger>
-                <TabsTrigger value="staff">Staff Details</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="student" className="space-y-4 mt-4">
+
+            {/* Photo Upload */}
+            <div className="space-y-2">
+              <Label><UploadIcon className="inline h-4 w-4" /> Profile Photo</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={uploadingImage}
+              />
+              {uploadingImage && <p className="text-sm text-muted-foreground">Uploading image...</p>}
+              {photoUrl && <img src={photoUrl} alt="Preview" className="mt-2 h-20 w-20 rounded-full object-cover" />}
+            </div>
+
+            {/* Role-specific Fields */}
+            {role === 'student' ? (
+              <>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="studentClass">Class</Label>
-                    <Input
-                      id="studentClass"
-                      placeholder="Class/Grade"
-                      value={studentClass}
-                      onChange={(e) => setStudentClass(e.target.value)}
-                    />
+                    <Label>Student ID</Label>
+                    <Input value={studentId} onChange={(e) => setStudentId(e.target.value)} required />
                   </div>
-                  
                   <div className="space-y-2">
-                    <Label htmlFor="englishName">English Name</Label>
-                    <Input
-                      id="englishName"
-                      placeholder="Name in English"
-                      value={englishName}
-                      onChange={(e) => setEnglishName(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="motherName">Mother's Name</Label>
-                    <Input
-                      id="motherName"
-                      placeholder="Mother's full name"
-                      value={motherName}
-                      onChange={(e) => setMotherName(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="fatherName">Father's Name</Label>
-                    <Input
-                      id="fatherName"
-                      placeholder="Father's full name"
-                      value={fatherName}
-                      onChange={(e) => setFatherName(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
-                    <Input
-                      id="phoneNumber"
-                      placeholder="Contact number"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                    />
+                    <Label>Class</Label>
+                    <select
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      required
+                    >
+                      <option value="">Select Class</option>
+                      {CLASS_OPTIONS.map(cls => (
+                        <option key={cls} value={cls}>{cls}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              </TabsContent>
-              
-              <TabsContent value="staff" className="space-y-4 mt-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="nameBangla">Name (Bangla)</Label>
-                    <Input
-                      id="nameBangla"
-                      placeholder="Name in Bangla"
-                      value={nameBangla}
-                      onChange={(e) => setNameBangla(e.target.value)}
-                    />
+                    <Label>Father's Name</Label>
+                    <Input value={fatherName} onChange={(e) => setFatherName(e.target.value)} required />
                   </div>
-                  
                   <div className="space-y-2">
-                    <Label htmlFor="nameEnglish">Name (English)</Label>
-                    <Input
-                      id="nameEnglish"
-                      placeholder="Name in English"
-                      value={nameEnglish}
-                      onChange={(e) => setNameEnglish(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="subject">Subject</Label>
-                    <Input
-                      id="subject"
-                      placeholder="Subject you teach"
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="designation">Designation</Label>
-                    <Input
-                      id="designation"
-                      placeholder="Your position"
-                      value={designation}
-                      onChange={(e) => setDesignation(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="nid">NID</Label>
-                    <Input
-                      id="nid"
-                      placeholder="National ID number"
-                      value={nid}
-                      onChange={(e) => setNid(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="mobile">Mobile</Label>
-                    <Input
-                      id="mobile"
-                      placeholder="Mobile number"
-                      value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
-                    />
+                    <Label>Mother's Name</Label>
+                    <Input value={motherName} onChange={(e) => setMotherName(e.target.value)} required />
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
+              </>
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Staff ID</Label>
+                    <Input value={staffId} onChange={(e) => setStaffId(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Designation</Label>
+                    <Input value={designation} onChange={(e) => setDesignation(e.target.value)} required />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>NID Number</Label>
+                    <Input value={nid} onChange={(e) => setNid(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Joining Date</Label>
+                    <Input type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} required />
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
-          
-          <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={isLoading}>
+
+          <CardFooter className="flex flex-col gap-4">
+            <Button type="submit" disabled={isLoading} className="w-full">
               {isLoading ? "Creating Account..." : "Create Account"}
             </Button>
-            
             <div className="text-center text-sm">
               Already have an account?{" "}
               <Link to="/login" className="text-school-primary hover:underline">
-                Log In
+                Log in here
               </Link>
             </div>
           </CardFooter>

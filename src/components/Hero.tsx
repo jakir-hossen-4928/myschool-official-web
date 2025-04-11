@@ -1,7 +1,6 @@
-
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button"; // Ensure this path is correct
+import { motion } from "framer-motion"; // ✅ Proper import
 
 const Hero = () => {
   const [isHovered, setIsHovered] = useState(false);
@@ -117,7 +116,7 @@ const Hero = () => {
         >
           <div className="mx-auto w-16 h-1 bg-gradient-to-r from-yellow-400 to-transparent rounded-full" />
         </motion.div>
-      </div>
+      </div> {/* ✅ Fixed closing div issue */}
     </motion.section>
   );
 };

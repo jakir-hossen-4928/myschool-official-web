@@ -1,19 +1,27 @@
-
 import { Menu, X } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase"; // Adjust import based on your firebase config file
+import { useToast } from "@/hooks/use-toast";
 
-const navRoutes = [
+// Define nav routes without Sign-In initially
+const baseNavRoutes = [
   { label: "Home", path: "/" },
   { label: "Submit Data", path: "/submit-student-data" },
   { label: "Assets", path: "/assets" },
-  { label: "Sign-In", path: "/admin" },
 ];
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'student' | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
+  // Animation variants
   const navVariants = {
     hidden: { opacity: 0, y: -20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
@@ -34,6 +42,64 @@ const Navbar = () => {
     visible: { opacity: 1, x: 0 },
   };
 
+  // Fetch user auth state and role on mount
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setIsAuthenticated(true);
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const role = userData.role as 'admin' | 'staff' | 'student';
+            setUserRole(role);
+          } else {
+            console.error('User document not found');
+            toast({
+              variant: 'destructive',
+              title: 'Error',
+              description: 'User data not found. Contact support.',
+            });
+            setUserRole(null);
+          }
+        } catch (error: any) {
+          console.error('Error fetching user role:', error);
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Failed to fetch user role.',
+          });
+          setUserRole(null);
+        }
+      } else {
+        setIsAuthenticated(false);
+        setUserRole(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
+
+  // Determine dashboard path based on role
+  const getDashboardPath = () => {
+    switch (userRole) {
+      case 'admin':
+        return '/admin';
+      case 'staff':
+        return '/staff';
+      case 'student':
+        return '/student';
+      default:
+        return '/admin'; // Fallback for unauthenticated or unknown role
+    }
+  };
+
+  // Dynamically set nav routes based on auth state
+  const navRoutes = isAuthenticated
+    ? [...baseNavRoutes, { label: "Dashboard", path: getDashboardPath() }]
+    : [...baseNavRoutes, { label: "Sign-In", path: "/admin" }];
+
   return (
     <motion.nav
       variants={navVariants}
@@ -43,7 +109,7 @@ const Navbar = () => {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16 lg:h-20">
-          {/* Logo Section with Navigation */}
+          {/* Logo Section */}
           <motion.div
             className="flex-shrink-0 flex items-center space-x-3"
             whileHover={{ scale: 1.05 }}
@@ -53,6 +119,7 @@ const Navbar = () => {
                 src="/my-school-logo.jpg"
                 alt="School Logo"
                 className="h-12 w-12 object-cover rounded-full border-2 border-white/20 shadow-md"
+                onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/48')}
               />
               <span className="text-2xl lg:text-3xl font-extrabold text-white">
                 MySchool-মাইস্কুল
@@ -108,7 +175,7 @@ const Navbar = () => {
           >
             <div className="px-4 pt-4 pb-6 space-y-2">
               {navRoutes.map((route) => (
-                <motion.div key={route.label} variants={mobileItemVariants}>
+                <motion.div key={role.label} variants={mobileItemVariants}>
                   <Link
                     to={route.path}
                     onClick={() => setIsOpen(false)}

@@ -1,73 +1,84 @@
-# Welcome to your Lovable project
+# MySchool Official Website 🌟
 
-## Project info
+Welcome to **MySchool** - a comprehensive school management system built with **React, TypeScript, and AI-powered automation**! 🎓 Designed to streamline administrative tasks, enhance communication, and empower educators, MySchool is your one-stop solution for modern school management. 🚀
 
-**URL**: https://lovable.dev/projects/52fcc466-22c3-4602-b2de-ef4e3f924510
+---
 
-## How can I edit this code?
+## ✨ Features
 
-There are several ways of editing your application.
+### 🏢 Admin Dashboard
+- 📈 **Real-Time Analytics**: Monitor students, teachers, and finances with dynamic charts.
+- 💰 **Financial Insights**: Track income, expenses, and balance at a glance.
+- ✅ **Data Accuracy**: Ensure complete student profiles and identify missing details easily.
 
-**Use Lovable**
+### 👩‍🎓 Student Management
+- 📋 **Data Collection**: Simple, efficient forms for student information entry.
+- 🔍 **Profile Handling**: Easily manage student records (Full CRUD support coming soon!).
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/52fcc466-22c3-4602-b2de-ef4e3f924510) and start prompting.
+### 💸 Fund Tracker
+- 📝 **Transaction Logs**: Add, edit, and delete income/expense records.
+- 📅 **Filtering System**: Sort transactions by date, month, or category (Academic/Development).
+- 🖨️ **PDF Reports**: Export vouchers and balance sheets efficiently.
 
-Changes made via Lovable will be committed automatically to this repo.
+### 📚 Academic Routine
+- ⏰ **Scheduling System**: Plan and organize class routines effortlessly (details TBD).
 
-**Use your preferred IDE**
+### 👨‍🏫 Teachers Panel
+- 👥 **Staff Profiles**: Manage teacher details, including subjects and salaries.
+- 📸 **Photo Upload**: Upload profile pictures with **ImgBB** integration.
+- ⚙️ **Customizable Display**: Adjust visibility settings for teacher information.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 📱 SMS Service
+- 📩 **Bulk Messaging**: Send personalized SMS to students and parents.
+- 💲 **Cost Tracking**: Monitor SMS expenses and balance in real-time.
+- 📥 **Export Data**: Download student details in **CSV** format.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### 🛠️ MySchool Suite
+- 📜 **Document Generator**: Create syllabi, vouchers, and notices seamlessly.
+- 📤 **File Handling**: Import **CSV/JSON** files and export as **PDF/CSV/JSON**.
+- 🤖 **AI-Powered Enhancements**: Utilize AI to generate content efficiently.
 
-Follow these steps:
+### 💬 MySchool AI Chatbot
+- 🗣️ **Smart Assistant**: Get insights on students, teachers, and financial data.
+- 🎯 **Personalized Responses**: Context-aware replies tailored to your school.
+- ⏱️ **Live Updates**: Real-time interactions with a friendly AI chatbot.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+---
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## 🛠️ Tech Stack
 
-# Step 3: Install the necessary dependencies.
-npm i
+- **Frontend**: React ⚛️ | TypeScript 📜 | Tailwind CSS 🎨 | Framer Motion 🎬
+- **State Management**: `@tanstack/react-query` 🔄
+- **Backend**: Appwrite ☁️ (Authentication & Database)
+- **AI**: OpenRouter 🤖 (Chatbot & Content Generation)
+- **SMS**: Custom Gateway Integration 📡
+- **UI Components**: Shadcn UI 🌟
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+---
 
-**Edit a file directly in GitHub**
+## 🚀 Prerequisites
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Ensure you have the following before running the project:
 
-**Use GitHub Codespaces**
+- **Node.js (v16+)** 🟢
+- **npm or yarn** 📦
+- **Appwrite instance** ☁️
+- **API keys for OpenRouter & SMS gateway** 🔑
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## 📖 Usage Guide
 
-This project is built with:
+1. **Login**: Access the **admin dashboard** via `/admin-login`.
+2. **Explore Modules**: Manage students, finances, SMS services, and more via the sidebar.
+3. **AI Chatbot**: Interact with the AI assistant for real-time insights.
+4. **Generate Documents**: Use **MySchool Suite** for instant document creation.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## 📬 Contact & Support
 
-Simply open [Lovable](https://lovable.dev/projects/52fcc466-22c3-4602-b2de-ef4e3f924510) and click on Share -> Publish.
+Have questions or need help? Reach out at **mdjakirkhan4928@gmail.com** or join our [Facebook](https://www.facebook.com/share/15YCmukFeD/)! 💌
 
-## Can I connect a custom domain to my Lovable project?
+**Happy Managing with MySchool! 🎉**
 
-Yes it is!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)

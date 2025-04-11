@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { getCurrentUser } from '@/lib/auth';
@@ -20,24 +19,29 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasRequiredRole, setHasRequiredRole] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const user = await getCurrentUser() as User | null;
-        
-        if (user) {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+
+        if (currentUser) {
           setIsAuthenticated(true);
-          
-          // If no specific role is required or the user has the required role
-          if (!requiredRole || user.role === requiredRole) {
+          console.log(`ProtectedRoute - User: ${JSON.stringify(currentUser)}, Required Role: ${requiredRole}`);
+
+          if (!requiredRole || currentUser.role === requiredRole) {
             setHasRequiredRole(true);
+          } else {
+            console.log(`Role mismatch - User Role: ${currentUser.role}, Required: ${requiredRole}`);
           }
+        } else {
+          console.log('No user authenticated');
         }
-        
-        setIsLoading(false);
       } catch (error) {
-        console.error("Error checking auth:", error);
+        console.error('Error checking authentication:', error);
+      } finally {
         setIsLoading(false);
       }
     };
@@ -50,13 +54,18 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
   }
 
   if (!isAuthenticated) {
+    console.log('Redirecting to /login - User not authenticated');
     return <Navigate to="/login" replace />;
   }
 
   if (requiredRole && !hasRequiredRole) {
-    // Redirect based on role
-    if (requiredRole === 'admin') {
-      return <Navigate to="/unauthorized" replace />;
+    console.log(`Redirecting - User Role: ${user?.role}, Required Role: ${requiredRole}`);
+    if (user?.role === 'admin') {
+      return <Navigate to="/admin" replace />;
+    } else if (user?.role === 'staff') {
+      return <Navigate to="/staff" replace />;
+    } else if (user?.role === 'student') {
+      return <Navigate to="/student" replace />;
     } else {
       return <Navigate to="/" replace />;
     }

@@ -1,341 +1,340 @@
-
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { LayoutDashboard, Users, BookOpen, DollarSign, AlertCircle, School, Calendar } from 'lucide-react';
+import { BarChart, PieChart, Pie, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '../../components/ui/card';
+import { Badge } from '../../components/ui/badge';
+import { ScrollArea } from '../../components/ui/scroll-area';
+import { Toaster } from '../../components/ui/sonner';
+import { toast } from 'sonner';
+import { ArrowUp, ArrowDown, Users, BookOpen, Wallet, AlertCircle, Clock, Coins, LineChart } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import Loading from '../../components/loader/Loading';
 
-// Mock data for the dashboard
-const COLORS = ['#4f46e5', '#6366f1', '#a855f7', '#ec4899', '#f97316', '#84cc16', '#06b6d4'];
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
-const mockFinancialData = [
-  { month: 'Jan', income: 6500, expenses: 5200 },
-  { month: 'Feb', income: 5900, expenses: 5100 },
-  { month: 'Mar', income: 7000, expenses: 5400 },
-  { month: 'Apr', income: 6800, expenses: 5600 },
-  { month: 'May', income: 7200, expenses: 5300 },
-  { month: 'Jun', income: 7500, expenses: 5700 },
-];
-
-const mockClassDistribution = [
-  { name: 'Class 1', value: 25 },
-  { name: 'Class 2', value: 30 },
-  { name: 'Class 3', value: 28 },
-  { name: 'Class 4', value: 22 },
-  { name: 'Class 5', value: 20 },
-  { name: 'Class 6', value: 18 },
-];
-
-const mockStudentAttendance = [
-  { month: 'Jan', attendance: 92 },
-  { month: 'Feb', attendance: 94 },
-  { month: 'Mar', attendance: 91 },
-  { month: 'Apr', attendance: 95 },
-  { month: 'May', attendance: 93 },
-  { month: 'Jun', attendance: 96 },
-];
-
-const AdminOverview = () => {
-  const [statsData, setStatsData] = useState({
-    totalStudents: 0,
-    totalTeachers: 0,
-    totalIncome: 0,
-    totalExpenses: 0,
-    balance: 0,
-    incompleteProfiles: 0
-  });
-  
-  const [isLoading, setIsLoading] = useState(true);
+const AdminOverview: React.FC = () => {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate API call to get dashboard data
-    setTimeout(() => {
-      setStatsData({
-        totalStudents: 143,
-        totalTeachers: 12,
-        totalIncome: 41900,
-        totalExpenses: 32300,
-        balance: 9600,
-        incompleteProfiles: 8
-      });
-      setIsLoading(false);
-    }, 1000);
-    
-    // In a real implementation, you would call your backend API
-    // fetchDashboardData();
+    loadStats();
   }, []);
 
-  // Function to format currency
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0
-    }).format(value);
+  const loadStats = async (retries = 3, delay = 2000) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${BACKEND_URL}/admin-overview`);
+      if (!response.ok) throw new Error(`Failed to fetch admin overview: ${response.statusText}`);
+      const { overview } = await response.json();
+      setStats(overview || {});
+      toast.success('Admin dashboard updated');
+    } catch (err) {
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return loadStats(retries - 1, delay);
+      }
+      setError('Failed to load statistics');
+      toast.error('Connection error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard Overview</h2>
-        <div className="text-sm text-muted-foreground">
-          Last updated: {new Date().toLocaleDateString()}
+  const chartColors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
+
+  if (loading) {
+    return (
+     <Loading />
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 gap-4">
+        <div className="bg-red-100 p-4 rounded-full">
+          <AlertCircle className="h-12 w-12 text-red-600" />
         </div>
+        <h2 className="text-2xl font-semibold text-gray-800">{error}</h2>
+        <Button onClick={loadStats} className="gap-2">
+          <Clock className="w-4 h-4" /> Retry
+        </Button>
       </div>
-      
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Students
+    );
+  }
+
+  // Data processing for charts
+  const classDistributionData = Object.entries(stats?.students?.classDistribution || {}).map(([name, value]) => ({
+    name,
+    value
+  }));
+
+  const subjectDistributionData = Object.entries(stats?.teachers?.subjectDistribution || {}).map(([name, value]) => ({
+    name,
+    value
+  }));
+
+  const financialData = [
+    { name: 'Income', value: stats?.transactions?.totalIncome || 0 },
+    { name: 'Expenses', value: stats?.transactions?.totalExpenses || 0 }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-8">
+      <Toaster position="top-right" />
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="Total Students"
+            value={stats?.students?.totalStudents || 0}
+            icon={<Users className="h-6 w-6" />}
+            trend="up"
+            percentage="12%"
+          />
+          <StatCard
+            title="Total Teachers"
+            value={stats?.teachers?.totalTeachers || 0}
+            icon={<BookOpen className="h-6 w-6" />}
+            trend="stable"
+          />
+          <StatCard
+            title="Net Balance"
+            value={`৳${(stats?.transactions?.netBalance || 0).toFixed(2)}`}
+            icon={<Wallet className="h-6 w-6" />}
+            trend={stats?.transactions?.netBalance >= 0 ? 'up' : 'down'}
+          />
+          <StatCard
+            title="Incomplete Profiles"
+            value={stats?.students?.incompleteProfiles || 0}
+            icon={<AlertCircle className="h-6 w-6" />}
+            trend="down"
+            percentage="5%"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 p-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                <LineChart className="h-5 w-5" /> Financial Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={financialData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="value">
+                      {financialData.map((_, index) => (
+                        <Cell key={index} fill={index === 0 ? '#10b981' : '#ef4444'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                <Users className="h-5 w-5" /> Class Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={classDistributionData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      label
+                    >
+                      {classDistributionData.map((_, index) => (
+                        <Cell key={index} fill={chartColors[index % chartColors.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                <BookOpen className="h-5 w-5" /> Subject Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-72 pr-4">
+                {subjectDistributionData.map((item, index) => (
+                  <div key={item.name} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: chartColors[index] }} />
+                      <span className="font-medium">{item.name}</span>
+                    </div>
+                    <Badge variant="outline" className="px-3 py-1">
+                      {item.value}
+                    </Badge>
+                  </div>
+                ))}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                <Coins className="h-5 w-5" /> Salary Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span>Total Monthly Salary</span>
+                <span className="font-semibold text-emerald-600">
+                  ৳{(stats?.teachers?.totalSalary || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-medium">Designation Distribution</h4>
+                {Object.entries(stats?.teachers?.designationDistribution || {}).map(([designation, count]) => (
+                  <div key={designation} className="flex items-center justify-between">
+                    <span className="text-gray-600">{designation}</span>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="p-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <AlertCircle className="h-5 w-5" /> Data Quality Report
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{isLoading ? '...' : statsData.totalStudents}</div>
-            <p className="text-xs text-muted-foreground">
-              Across all classes
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Teaching Staff
-            </CardTitle>
-            <School className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{isLoading ? '...' : statsData.totalTeachers}</div>
-            <p className="text-xs text-muted-foreground">
-              Faculty members
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Financial Balance
-            </CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{isLoading ? '...' : formatCurrency(statsData.balance)}</div>
-            <p className="text-xs text-muted-foreground">
-              {statsData.balance > 0 ? '+' : ''}{isLoading ? '...' : ((statsData.balance / statsData.totalIncome) * 100).toFixed(1)}% from last month
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Incomplete Profiles
-            </CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{isLoading ? '...' : statsData.incompleteProfiles}</div>
-            <p className="text-xs text-muted-foreground">
-              Requires attention
-            </p>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span>Profile Completion</span>
+                <span className="font-semibold">
+                  {Math.round(
+                    ((stats.students.totalStudents - stats.students.incompleteProfiles) /
+                      stats.students.totalStudents) *
+                      100
+                  ) || 0}%
+                </span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-500"
+                  style={{
+                    width: `${((stats.students.totalStudents - stats.students.incompleteProfiles) /
+                      stats.students.totalStudents) *
+                      100}%`
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span>Unique Parent Accounts</span>
+                <span className="font-semibold">{stats.students.uniqueParents}</span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-500"
+                  style={{
+                    width: `${(stats.students.uniqueParents / stats.students.totalStudents) * 100}%`
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span>Last Updated</span>
+                <span className="font-medium text-sm">
+                  {new Date(stats.lastUpdated).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span>Total Transactions</span>
+                <span className="font-semibold">{stats.transactions.totalTransactions}</span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-purple-500"
+                  style={{
+                    width: `${Math.min(
+                      (stats.transactions.totalTransactions / 1000) * 100,
+                      100
+                    )}%`
+                  }}
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
-      
-      {/* Dashboard Tabs */}
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <LayoutDashboard className="h-4 w-4" />
-            <span>Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="finances" className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
-            <span>Finances</span>
-          </TabsTrigger>
-          <TabsTrigger value="students" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            <span>Students</span>
-          </TabsTrigger>
-          <TabsTrigger value="teachers" className="flex items-center gap-2">
-            <School className="h-4 w-4" />
-            <span>Teachers</span>
-          </TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card className="col-span-2">
-              <CardHeader>
-                <CardTitle>Financial Overview</CardTitle>
-                <CardDescription>Income vs. expenses for the past 6 months</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={mockFinancialData}
-                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                      <Legend />
-                      <Bar dataKey="income" name="Income" fill="#4f46e5" />
-                      <Bar dataKey="expenses" name="Expenses" fill="#6366f1" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Class Distribution</CardTitle>
-                <CardDescription>Students per class</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={mockClassDistribution}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {mockClassDistribution.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => [value, 'Students']} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card className="col-span-2">
-              <CardHeader>
-                <CardTitle>Recent Notifications</CardTitle>
-                <CardDescription>Latest updates and alerts</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-4">
-                    <div className="bg-school-light p-2 rounded-full">
-                      <Calendar className="h-5 w-5 text-school-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Upcoming Parent-Teacher Meeting</p>
-                      <p className="text-sm text-muted-foreground">Scheduled for next Friday at 3:00 PM.</p>
-                      <p className="text-xs text-muted-foreground mt-1">2 hours ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start space-x-4">
-                    <div className="bg-school-light p-2 rounded-full">
-                      <AlertCircle className="h-5 w-5 text-school-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Student Information Update Required</p>
-                      <p className="text-sm text-muted-foreground">8 student profiles need additional information.</p>
-                      <p className="text-xs text-muted-foreground mt-1">1 day ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start space-x-4">
-                    <div className="bg-school-light p-2 rounded-full">
-                      <DollarSign className="h-5 w-5 text-school-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Financial Report Ready</p>
-                      <p className="text-sm text-muted-foreground">The monthly financial report is ready for review.</p>
-                      <p className="text-xs text-muted-foreground mt-1">2 days ago</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Student Attendance</CardTitle>
-                <CardDescription>Monthly attendance rates (%)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={mockStudentAttendance}
-                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis domain={[85, 100]} />
-                      <Tooltip formatter={(value) => [`${value}%`, 'Attendance']} />
-                      <Line type="monotone" dataKey="attendance" name="Attendance Rate" stroke="#a855f7" strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="finances" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Financial Details</CardTitle>
-              <CardDescription>Detailed financial information will be displayed here</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This section will contain detailed financial reports, budgets, and transaction history.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="students" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Information</CardTitle>
-              <CardDescription>Detailed student information will be displayed here</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This section will contain student enrollment data, academic performance, and demographic information.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="teachers" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Teacher Information</CardTitle>
-              <CardDescription>Detailed teacher information will be displayed here</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This section will contain teacher profiles, assignments, performance metrics, and schedules.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 };
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  trend?: 'up' | 'down' | 'stable';
+  percentage?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ title, value, icon, trend, percentage }) => (
+  <Card className="group hover:border-gray-300 transition-colors">
+    <CardContent className="p-6 flex items-center justify-between">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-gray-500">
+          {icon}
+          <span className="text-sm font-medium">{title}</span>
+        </div>
+        <h3 className="text-3xl font-bold">{value}</h3>
+      </div>
+      {trend && (
+        <div className={`p-2 rounded-full ${trend === 'up' ? 'bg-emerald-100' : trend === 'down' ? 'bg-red-100' : 'bg-gray-100'}`}>
+          {trend === 'up' ? (
+            <ArrowUp className="h-5 w-5 text-emerald-600" />
+          ) : trend === 'down' ? (
+            <ArrowDown className="h-5 w-5 text-red-600" />
+          ) : (
+            <div className="h-5 w-5 bg-gray-400 rounded-full" />
+          )}
+        </div>
+      )}
+    </CardContent>
+    {percentage && (
+      <CardFooter className="px-6 pb-4 pt-0">
+        <span className={`text-sm ${trend === 'up' ? 'text-emerald-600' : 'text-red-600'}`}>
+          {percentage} from last month
+        </span>
+      </CardFooter>
+    )}
+  </Card>
+);
 
 export default AdminOverview;

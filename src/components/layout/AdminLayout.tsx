@@ -4,9 +4,10 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { 
-  LayoutDashboard, Users, BookOpen, School, MessageSquare, 
-  DollarSign, Calendar, Settings, LogOut, Menu, X, ChevronRight
+import {
+  LayoutDashboard, Users, BookOpen, School, MessageSquare,
+  DollarSign, Calendar, Settings, LogOut, Menu, X, ChevronRight,
+  Bot
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,8 +26,9 @@ export const AdminLayout = () => {
     { path: '/admin/academic', label: 'Academic', icon: <BookOpen className="h-5 w-5" /> },
     { path: '/admin/sms-service', label: 'SMS Service', icon: <MessageSquare className="h-5 w-5" /> },
     { path: '/admin/myschool-suite', label: 'Content Generator', icon: <Calendar className="h-5 w-5" /> },
-    { path: '/admin/myschool-ai', label: 'MySchool AI', icon: <Settings className="h-5 w-5" /> },
-  ];
+    { path: '/admin/myschool-ai', label: 'MySchool AI', icon: <Bot className="h-5 w-5" /> },
+    { path: '/admin/users-management', label: 'Users', icon: <Users className="h-5 w-5" /> },
+    ];
 
   const handleLogout = async () => {
     try {
@@ -34,7 +36,7 @@ export const AdminLayout = () => {
       toast({
         title: "Logged out successfully",
       });
-      navigate('/admin-login');
+      navigate('/login');
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -56,7 +58,7 @@ export const AdminLayout = () => {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Desktop Sidebar */}
-      <aside 
+      <aside
         className={cn(
           "bg-school-primary text-white fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -68,16 +70,16 @@ export const AdminLayout = () => {
               <School className="h-8 w-8" />
               <span className="text-xl font-bold">School Admin</span>
             </Link>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="lg:hidden text-white hover:bg-school-dark"
               onClick={toggleSidebar}
             >
               <X className="h-5 w-5" />
             </Button>
           </div>
-          
+
           <nav className="flex-1 py-4 overflow-y-auto">
             <ul className="space-y-1 px-2">
               {menuItems.map((item) => (
@@ -101,10 +103,10 @@ export const AdminLayout = () => {
               ))}
             </ul>
           </nav>
-          
+
           <div className="p-4 border-t border-school-dark">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
               onClick={handleLogout}
             >
@@ -114,24 +116,24 @@ export const AdminLayout = () => {
           </div>
         </div>
       </aside>
-      
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Top Navbar */}
         <header className="bg-white shadow-sm z-30">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center">
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="mr-2 lg:hidden"
                 onClick={toggleMobileMenu}
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="hidden lg:flex"
                 onClick={toggleSidebar}
               >
@@ -141,12 +143,12 @@ export const AdminLayout = () => {
                 {menuItems.find(item => item.path === location.pathname)?.label || 'Admin Panel'}
               </h1>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600 hidden md:inline">Administrator</span>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="text-gray-600"
                 onClick={handleLogout}
               >
@@ -156,7 +158,7 @@ export const AdminLayout = () => {
             </div>
           </div>
         </header>
-        
+
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="fixed inset-0 z-50 lg:hidden">
@@ -167,16 +169,16 @@ export const AdminLayout = () => {
                   <School className="h-8 w-8" />
                   <span className="text-xl font-bold">School Admin</span>
                 </Link>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className="text-white hover:bg-school-dark"
                   onClick={toggleMobileMenu}
                 >
                   <X className="h-5 w-5" />
                 </Button>
               </div>
-              
+
               <nav className="py-4">
                 <ul className="space-y-1 px-2">
                   {menuItems.map((item) => (
@@ -198,10 +200,10 @@ export const AdminLayout = () => {
                   ))}
                 </ul>
               </nav>
-              
+
               <div className="p-4 border-t border-school-dark">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
                   onClick={handleLogout}
                 >
@@ -212,7 +214,7 @@ export const AdminLayout = () => {
             </div>
           </div>
         )}
-        
+
         {/* Main Content */}
         <main className="flex-1 overflow-auto p-4">
           <Outlet />
