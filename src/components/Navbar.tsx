@@ -4,20 +4,21 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../lib/firebase"; // Adjust import based on your firebase config file
+import { auth, db } from "../lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 
-// Define nav routes without Sign-In initially
 const baseNavRoutes = [
   { label: "Home", path: "/" },
   { label: "Submit Data", path: "/submit-student-data" },
   { label: "Assets", path: "/assets" },
+  { label: "Routine", path: "/routine" },
 ];
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'student' | null>(null);
+  const [userRole, setUserRole] = useState<"admin" | "staff" | "student" | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -42,7 +43,7 @@ const Navbar = () => {
     visible: { opacity: 1, x: 0 },
   };
 
-  // Fetch user auth state and role on mount
+  // Fetch user auth state, role, and verified status
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -52,53 +53,81 @@ const Navbar = () => {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            const role = userData.role as 'admin' | 'staff' | 'student';
+            const role = userData.role as "admin" | "staff" | "student";
+            const verified = userData.verified || false;
             setUserRole(role);
+            setIsVerified(verified);
+            if (verified) {
+              // Navigate to dashboard for verified users
+              const dashboardPath = role === "admin" ? "/admin" : role === "staff" ? "/staff" : "/student";
+              if (!window.location.pathname.startsWith(dashboardPath)) {
+                console.log(`Navbar - Navigating verified user to ${dashboardPath}`);
+                navigate(dashboardPath);
+              }
+            } else {
+              // Navigate to pending-verification for unverified users
+              if (window.location.pathname !== "/pending-verification") {
+                console.log("Navbar - Navigating unverified user to /pending-verification");
+                navigate("/pending-verification");
+                toast({
+                  variant: "destructive",
+                  title: "Account Not Verified",
+                  description: "Your account is pending verification. Please contact the admin.",
+                });
+              }
+            }
           } else {
-            console.error('User document not found');
-            toast({
-              variant: 'destructive',
-              title: 'Error',
-              description: 'User data not found. Contact support.',
-            });
+            console.error("User document not found");
+            setIsAuthenticated(false);
             setUserRole(null);
+            setIsVerified(false);
+            navigate("/login");
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: "User data not found. Please sign in again.",
+            });
           }
         } catch (error: any) {
-          console.error('Error fetching user role:', error);
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'Failed to fetch user role.',
-          });
+          console.error("Error fetching user data:", error);
+          setIsAuthenticated(false);
           setUserRole(null);
+          setIsVerified(false);
+          navigate("/login");
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to fetch user data.",
+          });
         }
       } else {
         setIsAuthenticated(false);
         setUserRole(null);
+        setIsVerified(false);
+        // Only navigate to /login if on a protected route
+        if (
+          window.location.pathname.startsWith("/admin") ||
+          window.location.pathname.startsWith("/staff") ||
+          window.location.pathname.startsWith("/student")
+        ) {
+          console.log("Navbar - No user authenticated, navigating to /login");
+          navigate("/login");
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, [navigate, toast]);
 
-  // Determine dashboard path based on role
-  const getDashboardPath = () => {
-    switch (userRole) {
-      case 'admin':
-        return '/admin';
-      case 'staff':
-        return '/staff';
-      case 'student':
-        return '/student';
-      default:
-        return '/admin'; // Fallback for unauthenticated or unknown role
-    }
-  };
-
-  // Dynamically set nav routes based on auth state
+  // Dynamically set nav routes
   const navRoutes = isAuthenticated
-    ? [...baseNavRoutes, { label: "Dashboard", path: getDashboardPath() }]
-    : [...baseNavRoutes, { label: "Sign-In", path: "/admin" }];
+    ? [
+        ...baseNavRoutes,
+        ...(isVerified
+          ? [{ label: "Dashboard", path: `/${userRole}` }]
+          : [{ label: "Pending Verification", path: "/pending-verification" }]),
+      ]
+    : [...baseNavRoutes, { label: "Sign In", path: "/login" }];
 
   return (
     <motion.nav
@@ -119,7 +148,7 @@ const Navbar = () => {
                 src="/my-school-logo.jpg"
                 alt="School Logo"
                 className="h-12 w-12 object-cover rounded-full border-2 border-white/20 shadow-md"
-                onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/48')}
+                onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/48")}
               />
               <span className="text-2xl lg:text-3xl font-extrabold text-white">
                 MySchool-মাইস্কুল
@@ -175,7 +204,7 @@ const Navbar = () => {
           >
             <div className="px-4 pt-4 pb-6 space-y-2">
               {navRoutes.map((route) => (
-                <motion.div key={role.label} variants={mobileItemVariants}>
+                <motion.div key={route.label} variants={mobileItemVariants}>
                   <Link
                     to={route.path}
                     onClick={() => setIsOpen(false)}

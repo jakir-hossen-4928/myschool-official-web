@@ -3,23 +3,29 @@ import { Routes, Route } from "react-router-dom";
 import Loading from "@/components/loader/Loading";
 
 // Layouts
-import AdminLayout from "@/components/layout/AdminLayout";
-import StaffLayout from "@/components/layout/StaffLayout";
-import StudentLayout from "@/components/layout/StudentLayout";
-import PublicLayout from "@/components/layout/PublicLayout";
+const AdminLayout = lazy(() => import("@/components/layout/AdminLayout"));
+const StaffLayout = lazy(() => import("@/components/layout/StaffLayout"));
+const StudentLayout = lazy(() => import("@/components/layout/StudentLayout"));
+const PublicLayout = lazy(() => import("@/components/layout/PublicLayout"));
+
+
 
 // Authentication
-import { ProtectedRoute } from "@/routes/ProtectedRoute";
-import Login from "@/authentication/Loging"; // Assuming 'Loging' is a typo; should be 'Login'
-import SignUp from "@/authentication/SignUp";
+const ProtectedRoute = lazy(() => import("@/routes/ProtectedRoute"));
+const Login = lazy(() => import("@/authentication/Login"));
+const SignUp = lazy(() => import("@/authentication/SignUp"));
+const ResetPassword = lazy(() => import("@/authentication/ResetPassword"));
+const PendingVerification = lazy(() => import("@/authentication/PendingVerification"));
+const Unauthorized = lazy(() => import("@/authentication/Unauthorized"));
 
 // Public pages
-import Index from "@/pages/Index";
-import NotFound from "@/pages/NotFound";
-import StudentDataCollection from "@/components/StudentDataCollection";
-import Assets from "@/components/Assets";
-import ResetPassword from "@/authentication/ResetPassword";
-import UserVerify from "@/adminDasboard/usersverify/UserVerify";
+const Index = lazy(() => import("@/pages/Index"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+const StudentDataCollection = lazy(() => import("@/components/StudentDataCollection"));
+const Assets = lazy(() => import("@/components/Assets"));
+const UserVerify = lazy(() => import("@/adminDasboard/usersverify/UserVerify"));
+const StaffProfile = lazy(() => import("@/staffDashboard/components/StaffProfile"));
+const StudentProfile = lazy(() => import("@/studentDashboard/components/StudentProfile"));
 
 // Lazy-loaded admin components
 const AdminOverview = lazy(() => import("@/adminDasboard/adminOverview/AdminOverview"));
@@ -30,9 +36,12 @@ const TeachersPanel = lazy(() => import("@/adminDasboard/teachers/TeachersPanel"
 const SmsService = lazy(() => import("@/adminDasboard/smsservcie/SmsService"));
 const ContentGanarator = lazy(() => import("@/adminDasboard/contentganarate/ContentGanarator"));
 const MySchoolChat = lazy(() => import("@/adminDasboard/myschool-chat/MySchoolChat"));
+const AssetsManegment = lazy(() => import("@/adminDasboard/assestManegment/AssetsManegment"));
+const Settings = lazy(() => import("@/adminDasboard/settings/Settings"));
 
 // Lazy-loaded staff components
 const StaffDashboard = lazy(() => import("@/staffDashboard/StaffDashboard"));
+const TodoList = lazy(() => import("@/components/TodoList"));
 
 // Lazy-loaded student components
 const StudentDashboard = lazy(() => import("@/studentDashboard/StudentDashboard"));
@@ -41,26 +50,99 @@ const AppRoutes = () => {
   return (
     <Routes>
       {/* Public routes */}
-      <Route path="/" element={<PublicLayout />}>
-        <Route index element={<Index />} />
-        <Route path="assets" element={<Assets />} />
-        <Route path="submit-student-data" element={<StudentDataCollection />} />
-        <Route path="contact" element={<div>Contact Page</div>} />
+      <Route
+        path="/"
+        element={
+          <Suspense fallback={<Loading />}>
+            <PublicLayout />
+          </Suspense>
+        }
+      >
+        <Route
+          index
+          element={
+            <Suspense fallback={<Loading />}>
+              <Index />
+            </Suspense>
+          }
+        />
+        <Route
+          path="assets"
+          element={
+            <Suspense fallback={<Loading />}>
+              <Assets />
+            </Suspense>
+          }
+        />
+        <Route
+          path="routine"
+          element={
+            <Suspense fallback={<Loading />}>
+              <AcademicRoutine />
+            </Suspense>
+          }
+        />
+        <Route
+          path="submit-student-data"
+          element={
+            <Suspense fallback={<Loading />}>
+              <StudentDataCollection />
+            </Suspense>
+          }
+        />
       </Route>
 
       {/* Authentication routes */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<SignUp />} />
-      <Route path="/reset-password" element={<ResetPassword ></ResetPassword>} />
-      <Route path="/unauthorized" element={<div>Unauthorized Access - Please contact support</div>} />
+      <Route
+        path="/login"
+        element={
+          <Suspense fallback={<Loading />}>
+            <Login />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/signup"
+        element={
+          <Suspense fallback={<Loading />}>
+            <SignUp />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <Suspense fallback={<Loading />}>
+            <ResetPassword />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/unauthorized"
+        element={
+          <Suspense fallback={<Loading />}>
+            <Unauthorized />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/pending-verification"
+        element={
+          <Suspense fallback={<Loading />}>
+            <PendingVerification />
+          </Suspense>
+        }
+      />
 
       {/* Admin routes */}
       <Route
         path="/admin"
         element={
-          <ProtectedRoute requiredRole="admin">
-            <AdminLayout />
-          </ProtectedRoute>
+          <Suspense fallback={<Loading />}>
+            <ProtectedRoute requiredRole="admin">
+              <AdminLayout />
+            </ProtectedRoute>
+          </Suspense>
         }
       >
         <Route
@@ -83,7 +165,31 @@ const AppRoutes = () => {
           path="users-management"
           element={
             <Suspense fallback={<Loading />}>
-              <UserVerify/>
+              <UserVerify />
+            </Suspense>
+          }
+        />
+        <Route
+          path="assets-management"
+          element={
+            <Suspense fallback={<Loading />}>
+              <AssetsManegment />
+            </Suspense>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <Suspense fallback={<Loading />}>
+              <Settings />
+            </Suspense>
+          }
+        />
+        <Route
+          path="users-task-management"
+          element={
+            <Suspense fallback={<Loading />}>
+              <TodoList />
             </Suspense>
           }
         />
@@ -141,9 +247,11 @@ const AppRoutes = () => {
       <Route
         path="/staff"
         element={
-          <ProtectedRoute requiredRole="staff">
-            <StaffLayout />
-          </ProtectedRoute>
+          <Suspense fallback={<Loading />}>
+            <ProtectedRoute requiredRole="staff">
+              <StaffLayout />
+            </ProtectedRoute>
+          </Suspense>
         }
       >
         <Route
@@ -154,22 +262,81 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route path="students" element={<div>Staff Students Page</div>} />
-        <Route path="classes" element={<div>Staff Classes Page</div>} />
-        <Route path="schedules" element={<div>Staff Schedules Page</div>} />
-        <Route path="attendance" element={<div>Staff Attendance Page</div>} />
-        <Route path="messages" element={<div>Staff Messages Page</div>} />
-        <Route path="notifications" element={<div>Staff Notifications Page</div>} />
-        <Route path="profile" element={<div>Staff Profile Page</div>} />
+        <Route
+          path="students"
+          element={
+            <Suspense fallback={<Loading />}>
+              <Students />
+            </Suspense>
+          }
+        />
+        <Route
+          path="tasks"
+          element={
+            <Suspense fallback={<Loading />}>
+              <TodoList />
+            </Suspense>
+          }
+        />
+        <Route
+          path="routine"
+          element={
+            <Suspense fallback={<Loading />}>
+              <AcademicRoutine />
+            </Suspense>
+          }
+        />
+        <Route
+          path="schedules"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Staff Schedules Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="attendance"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Staff Attendance Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="messages"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Staff Messages Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Staff Notifications Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <Suspense fallback={<Loading />}>
+              <StaffProfile />
+            </Suspense>
+          }
+        />
       </Route>
 
       {/* Student routes */}
       <Route
         path="/student"
         element={
-          <ProtectedRoute requiredRole="student">
-            <StudentLayout />
-          </ProtectedRoute>
+          <Suspense fallback={<Loading />}>
+            <ProtectedRoute requiredRole="student">
+              <StudentLayout />
+            </ProtectedRoute>
+          </Suspense>
         }
       >
         <Route
@@ -180,18 +347,97 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route path="classes" element={<div>Student Classes Page</div>} />
-        <Route path="assignments" element={<div>Student Assignments Page</div>} />
-        <Route path="grades" element={<div>Student Grades Page</div>} />
-        <Route path="schedule" element={<div>Student Schedule Page</div>} />
-        <Route path="resources" element={<div>Student Resources Page</div>} />
-        <Route path="messages" element={<div>Student Messages Page</div>} />
-        <Route path="notifications" element={<div>Student Notifications Page</div>} />
-        <Route path="profile" element={<div>Student Profile Page</div>} />
+        <Route
+          path="classes"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Classes Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="tasks"
+          element={
+            <Suspense fallback={<Loading />}>
+              <TodoList />
+            </Suspense>
+          }
+        />
+        <Route
+          path="routine"
+          element={
+            <Suspense fallback={<Loading />}>
+              <AcademicRoutine />
+            </Suspense>
+          }
+        />
+        <Route
+          path="assignments"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Assignments Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="grades"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Grades Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="schedule"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Schedule Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="resources"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Resources Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="messages"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Messages Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <Suspense fallback={<Loading />}>
+              <div>Student Notifications Page</div>
+            </Suspense>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <Suspense fallback={<Loading />}>
+              <StudentProfile />
+            </Suspense>
+          }
+        />
       </Route>
 
       {/* Catch-all route */}
-      <Route path="*" element={<NotFound />} />
+      <Route
+        path="*"
+        element={
+          <Suspense fallback={<Loading />}>
+            <NotFound />
+          </Suspense>
+        }
+      />
     </Routes>
   );
 };

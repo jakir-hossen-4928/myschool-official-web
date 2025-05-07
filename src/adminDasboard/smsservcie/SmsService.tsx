@@ -1,24 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiInfo, FiClipboard, FiSend, FiUsers, FiDollarSign, FiWifi, FiX } from 'react-icons/fi';
-<<<<<<< HEAD
+
 import axios from 'axios';
 import { toast } from 'sonner';
-
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-
-=======
 import 'jspdf-autotable';
-import axios from 'axios';
-import { toast } from 'sonner';
-
 import Loading from '../../components/loader/Loading';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
-// const BACKEND_URL = 'http://localhost:5000'; // Override for local testing
->>>>>>> 7aa7c3f4f6c7f6c898cd6758cdee2344017b9302
 
 interface Student {
   id?: string;

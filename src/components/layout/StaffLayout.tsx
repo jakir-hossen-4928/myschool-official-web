@@ -1,10 +1,70 @@
+import React, { useState, useEffect } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { logout } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Menu,
+  X,
+  User,
+  BookOpen,
+  Calendar,
+  Bell,
+  MessageSquare,
+  FileText,
+  CheckSquare,
+  BookCheck,
+} from "lucide-react";
 
-import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { logout } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
-import { Menu, X, User, BookOpen, Calendar, Bell, MessageSquare, FileText } from 'lucide-react';
+// Centralized navigation links
+const navLinks = [
+  {
+    path: "/staff/students",
+    label: "Students",
+    icon: <User size={18} />,
+  },
+  {
+    path: "/staff/tasks",
+    label: "Tasks",
+    icon: <CheckSquare size={18} />,
+  },
+  {
+    path: "/staff/profile",
+    label: "Profile",
+    icon: <User size={18} />,
+  },
+  {
+    path: "/staff/routine",
+    label: "Routine",
+    icon: <BookCheck size={18} />,
+  },
+  {
+    path: "/staff/classes",
+    label: "Classes",
+    icon: <BookOpen size={18} />,
+  },
+  {
+    path: "/staff/schedules",
+    label: "Schedules",
+    icon: <Calendar size={18} />,
+  },
+  {
+    path: "/staff/attendance",
+    label: "Attendance",
+    icon: <FileText size={18} />,
+  },
+  {
+    path: "/staff/messages",
+    label: "Messages",
+    icon: <MessageSquare size={18} />,
+  },
+  {
+    path: "/staff/notifications",
+    label: "Notifications",
+    icon: <Bell size={18} />,
+  },
+
+];
 
 export const StaffLayout = () => {
   const navigate = useNavigate();
@@ -19,7 +79,7 @@ export const StaffLayout = () => {
       toast({
         title: "Logged out successfully",
       });
-      navigate('/login');
+      navigate("/login");
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -35,7 +95,7 @@ export const StaffLayout = () => {
   };
 
   const handleDashboard = () => {
-    navigate('/staff');
+    navigate("/staff");
     setIsSidebarOpen(false);
   };
 
@@ -89,54 +149,17 @@ export const StaffLayout = () => {
           </div>
 
           <nav className="space-y-1">
-            <a
-              href="/staff/students"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <User size={18} />
-              <span className="text-sm font-medium">Students</span>
-            </a>
-            <a
-              href="/staff/classes"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <BookOpen size={18} />
-              <span className="text-sm font-medium">Classes</span>
-            </a>
-            <a
-              href="/staff/schedules"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <Calendar size={18} />
-              <span className="text-sm font-medium">Schedules</span>
-            </a>
-            <a
-              href="/staff/attendance"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <FileText size={18} />
-              <span className="text-sm font-medium">Attendance</span>
-            </a>
-            <a
-              href="/staff/messages"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <MessageSquare size={18} />
-              <span className="text-sm font-medium">Messages</span>
-            </a>
-            <a
-              href="/staff/notifications"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <Bell size={18} />
-              <span className="text-sm font-medium">Notifications</span>
-            </a>
+            {navLinks.map((link) => (
+              <a
+                key={link.path}
+                href={link.path}
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                {link.icon}
+                <span className="text-sm font-medium">{link.label}</span>
+              </a>
+            ))}
           </nav>
         </div>
       </aside>

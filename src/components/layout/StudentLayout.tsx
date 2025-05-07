@@ -1,10 +1,74 @@
+import React, { useState, useEffect } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { logout } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Menu,
+  X,
+  BookOpen,
+  Calendar,
+  Bell,
+  MessageSquare,
+  FileText,
+  GraduationCap,
+  ListTodo,
+  BookCheck,
+} from "lucide-react";
 
-import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { logout } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
-import { Menu, X, BookOpen, Calendar, Bell, MessageSquare, FileText, GraduationCap } from 'lucide-react';
+// Centralized navigation links
+const navLinks = [
+  {
+    path: "/student/classes",
+    label: "My Classes",
+    icon: <BookOpen size={18} />,
+  },
+  {
+    path: "/student/tasks",
+    label: "My Tasks",
+    icon: <ListTodo size={18} />,
+  },
+  {
+    path: "/student/profile",
+    label: "Profile",
+    icon: <GraduationCap size={18} />,
+  },
+  {
+    path: "/student/routine",
+    label: "Routine",
+    icon: <BookCheck size={18} />,
+  },
+  {
+    path: "/student/assignments",
+    label: "Assignments",
+    icon: <FileText size={18} />,
+  },
+  {
+    path: "/student/grades",
+    label: "Grades",
+    icon: <BookOpen size={18} />,
+  },
+  {
+    path: "/student/schedule",
+    label: "Schedule",
+    icon: <Calendar size={18} />,
+  },
+  {
+    path: "/student/resources",
+    label: "Resources",
+    icon: <FileText size={18} />,
+  },
+  {
+    path: "/student/messages",
+    label: "Messages",
+    icon: <MessageSquare size={18} />,
+  },
+  {
+    path: "/student/notifications",
+    label: "Notifications",
+    icon: <Bell size={18} />,
+  },
+];
 
 export const StudentLayout = () => {
   const navigate = useNavigate();
@@ -19,7 +83,7 @@ export const StudentLayout = () => {
       toast({
         title: "Logged out successfully",
       });
-      navigate('/login');
+      navigate("/login");
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -35,7 +99,7 @@ export const StudentLayout = () => {
   };
 
   const handleDashboard = () => {
-    navigate('/student');
+    navigate("/student");
     setIsSidebarOpen(false);
   };
 
@@ -68,8 +132,9 @@ export const StudentLayout = () => {
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-800 to-blue-600 text-white shadow-lg transform transition-all duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } md:relative md:w-64 md:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-800 to-blue-600 text-white shadow-lg transform transition-all duration-300 ease-in-out ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } md:relative md:w-64 md:translate-x-0`}
       >
         <div className="p-4 md:p-6">
           <div className="flex items-center justify-between mb-4">
@@ -90,62 +155,17 @@ export const StudentLayout = () => {
           </div>
 
           <nav className="space-y-1">
-            <a
-              href="/student/classes"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <BookOpen size={18} />
-              <span className="text-sm font-medium">My Classes</span>
-            </a>
-            <a
-              href="/student/assignments"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <FileText size={18} />
-              <span className="text-sm font-medium">Assignments</span>
-            </a>
-            <a
-              href="/student/grades"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <BookOpen size={18} />
-              <span className="text-sm font-medium">Grades</span>
-            </a>
-            <a
-              href="/student/schedule"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <Calendar size={18} />
-              <span className="text-sm font-medium">Schedule</span>
-            </a>
-            <a
-              href="/student/resources"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <FileText size={18} />
-              <span className="text-sm font-medium">Resources</span>
-            </a>
-            <a
-              href="/student/messages"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <MessageSquare size={18} />
-              <span className="text-sm font-medium">Messages</span>
-            </a>
-            <a
-              href="/student/notifications"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <Bell size={18} />
-              <span className="text-sm font-medium">Notifications</span>
-            </a>
+            {navLinks.map((link) => (
+              <a
+                key={link.path}
+                href={link.path}
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                {link.icon}
+                <span className="text-sm font-medium">{link.label}</span>
+              </a>
+            ))}
           </nav>
         </div>
       </aside>
@@ -161,8 +181,9 @@ export const StudentLayout = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col w-full md:w-auto">
         <header
-          className={`bg-white p-4 shadow-md flex items-center justify-between sticky top-0 z-30 transition-transform duration-300 ease-in-out ${isHeaderVisible ? "translate-y-0" : "-translate-y-full"
-            }`}
+          className={`bg-white p-4 shadow-md flex items-center justify-between sticky top-0 z-30 transition-transform duration-300 ease-in-out ${
+            isHeaderVisible ? "translate-y-0" : "-translate-y-full"
+          }`}
         >
           <div className="flex items-center gap-4">
             <button

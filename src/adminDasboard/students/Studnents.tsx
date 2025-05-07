@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Trash, Edit, Download, X, Settings, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast'; // Import useToast hook
@@ -6,6 +6,7 @@ import axios from 'axios';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
+// Optimized data structures
 interface Student {
   id?: string;
   name: string;
@@ -17,6 +18,35 @@ interface Student {
   fatherName: string;
   photoUrl?: string;
 }
+
+// Cache for student data
+const studentCache = new Map<string, { students: Student[]; total: number }>();
+const classCache = new Map<string, Set<string>>();
+
+// Binary search for pagination
+const binarySearch = (arr: Student[], target: string): number => {
+  let left = 0;
+  let right = arr.length - 1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    if (arr[mid].id === target) return mid;
+    if (arr[mid].id! < target) left = mid + 1;
+    else right = mid - 1;
+  }
+  return -1;
+};
+
+// Quick sort for student list
+const quickSort = (arr: Student[]): Student[] => {
+  if (arr.length <= 1) return arr;
+
+  const pivot = arr[Math.floor(arr.length / 2)];
+  const left = arr.filter(student => student.id! < pivot.id!);
+  const right = arr.filter(student => student.id! > pivot.id!);
+
+  return [...quickSort(left), pivot, ...quickSort(right)];
+};
 
 const CLASS_OPTIONS = [
   "নার্সারি", "প্লে", "প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ", "পঞ্চম", "ষষ্ঠ"
@@ -48,9 +78,31 @@ const Students = () => {
 
   const { toast } = useToast(); // Use the toast hook
 
+  // Memoized filtered students
+  const filteredStudents = useMemo(() => {
+    if (!selectedClass) return students;
+    return students.filter(student => student.class === selectedClass);
+  }, [students, selectedClass]);
+
+  // Memoized paginated students
+  const paginatedStudents = useMemo(() => {
+    const start = currentPage * itemsPerPage;
+    const end = start + itemsPerPage;
+    return quickSort(filteredStudents).slice(start, end);
+  }, [filteredStudents, currentPage, itemsPerPage]);
+
   const handleFetchStudents = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Check cache first
+      const cacheKey = `${selectedClass}-${currentPage}`;
+      if (studentCache.has(cacheKey)) {
+        const cachedData = studentCache.get(cacheKey);
+        setStudents(cachedData!.students);
+        setTotalStudents(cachedData!.total);
+        return;
+      }
+
       const response = await axios.get(`${BACKEND_URL}/students`, {
         params: {
           page: currentPage,
@@ -58,6 +110,21 @@ const Students = () => {
           class: selectedClass || undefined,
         },
       });
+
+      // Update cache
+      studentCache.set(cacheKey, {
+        students: response.data.students,
+        total: response.data.total
+      });
+
+      // Update class cache
+      response.data.students.forEach((student: Student) => {
+        if (!classCache.has(student.class)) {
+          classCache.set(student.class, new Set());
+        }
+        classCache.get(student.class)!.add(student.id!);
+      });
+
       setStudents(response.data.students);
       setTotalStudents(response.data.total);
     } catch (error) {
@@ -277,7 +344,7 @@ const Students = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 font-sans">
-     {isLoading && (
+      {isLoading && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="text-white">Loading...</div>
         </div>
@@ -350,10 +417,6 @@ const Students = () => {
             </button>
           ))}
         </div>
-
-
-
-
 
         {/* Student Profiles Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -739,8 +802,8 @@ const Students = () => {
                       onClick={() => handleDelete(showDeleteModal!)}
                       disabled={isLoading}
                       className={`px-6 py-2 text-white rounded-lg transition-colors ${isLoading
-                          ? 'bg-red-400 opacity-50 cursor-not-allowed'
-                          : 'bg-red-600 hover:bg-red-700'
+                        ? 'bg-red-400 opacity-50 cursor-not-allowed'
+                        : 'bg-red-600 hover:bg-red-700'
                         }`}
                     >
                       {isLoading ? 'Deleting...' : 'Confirm Delete'}
@@ -751,7 +814,6 @@ const Students = () => {
             </motion.div>
           )}
         </AnimatePresence>
-
 
         <AnimatePresence>
           {showSettingsModal && (
@@ -818,13 +880,9 @@ const Students = () => {
             </motion.div>
           )}
         </AnimatePresence>
-
-
       </div>
     </div>
   );
 };
 
-
-
-export default Students; 
+export default Students;

@@ -1,76 +1,99 @@
-import React, { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { getCurrentUser } from '@/lib/auth';
-import Loading from '@/components/loader/Loading';
+import React, { useEffect, useState } from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { getCurrentUser } from "@/lib/auth";
+import Loading from "@/components/loader/Loading";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'admin' | 'staff' | 'student';
+  requiredRole?: "admin" | "staff" | "student";
 }
 
 interface User {
   id: string;
   email: string | null;
-  name: string | null;
-  role: 'admin' | 'staff' | 'student';
+  name?: string | null;
+  role: "admin" | "staff" | "student";
+  verified: boolean;
 }
 
-export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [hasRequiredRole, setHasRequiredRole] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
+  const [authStatus, setAuthStatus] = useState<{
+    isLoading: boolean;
+    user: User | null;
+  }>({ isLoading: true, user: null });
+  const { toast } = useToast();
+  const location = useLocation();
 
   useEffect(() => {
+    let isMounted = true;
+
     const checkAuth = async () => {
       try {
         const currentUser = await getCurrentUser();
-        setUser(currentUser);
-
-        if (currentUser) {
-          setIsAuthenticated(true);
-          console.log(`ProtectedRoute - User: ${JSON.stringify(currentUser)}, Required Role: ${requiredRole}`);
-
-          if (!requiredRole || currentUser.role === requiredRole) {
-            setHasRequiredRole(true);
-          } else {
-            console.log(`Role mismatch - User Role: ${currentUser.role}, Required: ${requiredRole}`);
-          }
-        } else {
-          console.log('No user authenticated');
+        console.log("ProtectedRoute - Fetched user:", currentUser);
+        if (isMounted) {
+          setAuthStatus({ isLoading: false, user: currentUser });
         }
-      } catch (error) {
-        console.error('Error checking authentication:', error);
-      } finally {
-        setIsLoading(false);
+      } catch (error: any) {
+        console.error("ProtectedRoute - Error checking authentication:", error);
+        if (isMounted) {
+          setAuthStatus({ isLoading: false, user: null });
+        }
       }
     };
 
     checkAuth();
-  }, [requiredRole]);
 
-  if (isLoading) {
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Empty dependencies to run once
+
+  useEffect(() => {
+    if (!authStatus.isLoading) {
+      if (!authStatus.user) {
+        console.log(
+          `ProtectedRoute - Triggering toast for redirect to /unauthorized from ${location.pathname}`
+        );
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "Please sign in or verify your account to access this page.",
+        });
+      } else if (requiredRole && authStatus.user.role !== requiredRole) {
+        console.log(
+          `ProtectedRoute - Triggering toast for role mismatch at ${location.pathname}`
+        );
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "You do not have the required role to access this page.",
+        });
+      }
+    }
+  }, [authStatus, requiredRole, location.pathname, toast]);
+
+  if (authStatus.isLoading) {
+    console.log(`ProtectedRoute - Loading state for ${location.pathname}`);
     return <Loading />;
   }
 
-  if (!isAuthenticated) {
-    console.log('Redirecting to /login - User not authenticated');
-    return <Navigate to="/login" replace />;
+  if (!authStatus.user) {
+    console.log(
+      `ProtectedRoute - Rendering Navigate to /unauthorized from ${location.pathname}`
+    );
+    return <Navigate to="/unauthorized" replace state={{ from: location }} />;
   }
 
-  if (requiredRole && !hasRequiredRole) {
-    console.log(`Redirecting - User Role: ${user?.role}, Required Role: ${requiredRole}`);
-    if (user?.role === 'admin') {
-      return <Navigate to="/admin" replace />;
-    } else if (user?.role === 'staff') {
-      return <Navigate to="/staff" replace />;
-    } else if (user?.role === 'student') {
-      return <Navigate to="/student" replace />;
-    } else {
-      return <Navigate to="/" replace />;
-    }
+  if (requiredRole && authStatus.user.role !== requiredRole) {
+    console.log(
+      `ProtectedRoute - Rendering Navigate to /unauthorized from ${location.pathname} - Role mismatch: User Role: ${authStatus.user.role}, Required: ${requiredRole}`
+    );
+    return <Navigate to="/unauthorized" replace state={{ from: location }} />;
   }
 
+  console.log(`ProtectedRoute - Access granted to ${location.pathname} for user:`, authStatus.user);
   return <>{children}</>;
 };
 

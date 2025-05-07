@@ -1,170 +1,497 @@
-import React, { useRef, useState, useEffect } from "react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import html2canvas from "html2canvas";
-import { FaWhatsapp, FaDownload, FaImage, FaShare } from "react-icons/fa";
-
-const defaultRoutine = {
-  schoolName: "MySchool Class Routine",
-  classLevels: [
-    { name: "Play-Nursery", teacher: "Teacher A" },
-    { name: "One", teacher: "Teacher B" },
-    { name: "Two", teacher: "Teacher C" },
-    { name: "Three", teacher: "Teacher D" },
-    { name: "Four", teacher: "Teacher E" },
-    { name: "Five", teacher: "Teacher F" },
-    { name: "Six", teacher: "Teacher G" },
-  ],
-  timeSlots: [
-    "8:00 - 8:30 AM",
-    "8:30 - 9:00 AM",
-    "9:00 - 9:30 AM",
-    "9:30 - 10:00 AM",
-    "10:00 - 10:30 AM",
-    "10:30 - 11:00 AM",
-    "11:00 - 11:30 AM",
-    "11:30 - 12:00 PM",
-    "12:00 - 12:30 PM",
-    "12:30 - 1:00 PM",
-  ],
-  subjects: [
-    { name: "Welcome Activity", teacher: "Ms. Anna" },
-    { name: "Math", teacher: "Mr. John" },
-    { name: "English", teacher: "Ms. Emma" },
-    { name: "Science", teacher: "Dr. Smith" },
-    { name: "Break", teacher: "-" },
-    { name: "Art", teacher: "Ms. Lily" },
-    { name: "Social Studies", teacher: "Mr. Alex" },
-    { name: "Physical Ed", teacher: "Coach Brown" },
-    { name: "Language", teacher: "Ms. Garcia" },
-    { name: "Review", teacher: "Mr. Ryan" },
-  ],
-};
+import React, { useEffect, useState } from "react";
+import { FaEdit, FaSave, FaTrash } from "react-icons/fa";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { getCurrentUser } from "@/lib/auth";
+import { User } from "@/lib/types";
+import Loading from "@/components/loader/Loading";
+import { useToast } from "@/hooks/use-toast";
 
 const ClassRoutine = () => {
-  const routineRef = useRef(null);
-  const [routine, setRoutine] = useState(() => {
-    const savedRoutine = localStorage.getItem("classRoutine");
-    return savedRoutine ? JSON.parse(savedRoutine) : defaultRoutine;
-  });
+  const [routine, setRoutine] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const { toast } = useToast();
+
+  const subjectColors = {
+    "আরবি মকতব": "bg-amber-100",
+    "শারীরিক প্রশিক্ষণ": "bg-blue-100",
+    "গণিত": "bg-green-100",
+    "ইংরেজি": "bg-pink-100",
+    "বিজ্ঞান": "bg-purple-100",
+    "সামাজিক বিজ্ঞান": "bg-orange-100",
+    "শিল্পকলা": "bg-red-100",
+    "অবসর সময়": "bg-yellow-100",
+    "ভাষা": "bg-teal-100",
+    "সমীক্ষা": "bg-indigo-100",
+  };
 
   useEffect(() => {
-    localStorage.setItem("classRoutine", JSON.stringify(routine));
-  }, [routine]);
+    const initialize = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
 
-  const handleEdit = (type, index, field, value) => {
-    const updatedRoutine = { ...routine };
-    updatedRoutine[type][index][field] = value;
-    setRoutine(updatedRoutine);
-  };
+        const routineRef = doc(db, "routines", "defaultRoutine");
+        const routineSnap = await getDoc(routineRef);
 
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.setTextColor("#4f46e5");
-    doc.text(routine.schoolName, 105, 20, { align: "center" });
+        if (routineSnap.exists()) {
+          setRoutine(routineSnap.data());
+        } else {
+          const defaultRoutine = {
+            schoolName: "MySchool-মাইস্কুল",
+            classLevels: [
+              { name: "প্লে", teacher: "শিক্ষক এ" },
+              { name: "নার্সারি", teacher: "শিক্ষক বি" },
+              { name: "প্রথম", teacher: "শিক্ষক সি" },
+              { name: "দ্বিতীয়", teacher: "শিক্ষক ডি" },
+              { name: "তৃতীয়", teacher: "শিক্ষক ই" },
+              { name: "চতুর্থ", teacher: "শিক্ষক এফ" },
+              { name: "পঞ্চম", teacher: "শিক্ষক জি" },
+            ],
+            timeSlots: [
+              "8:00 - 8:40 AM",
+              "8:41 - 9:05 AM",
+              "9:06 - 9:46 AM",
+              "9:47 - 10:27 AM",
+              "10:28 - 11:08 AM",
+              "11:09 - 11:41 AM",
+              "11:41 - 12:00 PM",
+              "12:01 - 12:36 PM",
+              "12:37 - 1:12 PM",
+              "1:13 - 1:48 PM",
+              "1:49 - 2:24 PM",
+            ],
+            schedule: {
+              "8:00 - 8:40 AM": Array(7).fill({ name: "আরবি মকতব", teacher: "মিস আরবি" }),
+              "8:41 - 9:05 AM": Array(7).fill({ name: "শারীরিক প্রশিক্ষণ", teacher: "কোচ পিটি" }),
+              "9:06 - 9:46 AM": [
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+                { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+                { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+                { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+              ],
+              "9:47 - 10:27 AM": [
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "সামাজিক বিজ্ঞান", teacher: "মি. অ্যালেক্স" },
+                { name: "সামাজিক বিজ্ঞান", teacher: "মি. অ্যালেক্স" },
+                { name: "সামাজিক বিজ্ঞান", teacher: "মি. অ্যালেক্স" },
+              ],
+              "10:28 - 11:08 AM": [
+                { name: "শিল্পকলা", teacher: "মিস লিলি" },
+                { name: "শিল্পকলা", teacher: "মিস লিলি" },
+                { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+                { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "গণিত", teacher: "মি. জন" },
+              ],
+              "11:09 - 11:41 AM": [
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+                { name: "ইংরেজি", teacher: "মিস এমা" },
+              ],
+              "11:41 - 12:00 PM": Array(7).fill({ name: "অবসর সময়", teacher: "-" }),
+              "12:01 - 12:36 PM": [
+                null,
+                null,
+                null,
+                null,
+                { name: "শিল্পকলা", teacher: "মিস লিলি" },
+                { name: "শিল্পকলা", teacher: "মিস লিলি" },
+                { name: "শিল্পকলা", teacher: "মিস লিলি" },
+              ],
+              "12:37 - 1:12 PM": [
+                null,
+                null,
+                null,
+                null,
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+                { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+              ],
+              "1:13 - 1:48 PM": [
+                null,
+                null,
+                null,
+                null,
+                { name: "সমীক্ষা", teacher: "মি. রায়ান" },
+                { name: "সমীক্ষা", teacher: "মি. রায়ান" },
+                { name: "সমীক্ষা", teacher: "মি. রায়ান" },
+              ],
+              "1:49 - 2:24 PM": [
+                null,
+                null,
+                null,
+                null,
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "গণিত", teacher: "মি. জন" },
+                { name: "গণিত", teacher: "মি. জন" },
+              ],
+            },
+          };
+          await setDoc(routineRef, defaultRoutine);
+          setRoutine(defaultRoutine);
+        }
+      } catch (error) {
+        console.error("Error initializing routine:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load routine data.",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    initialize();
+  }, [toast]);
 
-    autoTable(doc, {
-      head: [["Time", ...routine.classLevels.map((cl) => `${cl.name}\n${cl.teacher}`)]],
-      body: routine.timeSlots.map((time, i) => [
-        time,
-        ...routine.classLevels.map(() => `${routine.subjects[i].name}\n${routine.subjects[i].teacher}`),
-      ]),
-      startY: 25,
-      theme: "grid",
-      styles: { fontSize: 10, cellPadding: 4 },
-      headStyles: { fillColor: "#4f46e5", textColor: "white" },
-      alternateRowStyles: { fillColor: "#f3f4f6" },
-    });
-
-    doc.save("Class_Routine.pdf");
-  };
-
-  const generateImage = async () => {
-    if (routineRef.current) {
-      const canvas = await html2canvas(routineRef.current, {
-        scale: 2,
-        useCORS: true,
-        scrollY: 0,
-        windowWidth: routineRef.current.scrollWidth,
-        windowHeight: routineRef.current.scrollHeight,
+  const saveRoutine = async () => {
+    if (user?.role !== "admin") {
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: "Only admins can edit the routine.",
       });
-
-      const image = canvas.toDataURL("image/png", 1.0);
-      const link = document.createElement("a");
-      link.href = image;
-      link.download = "Class_Routine.png";
-      link.click();
+      return;
+    }
+    try {
+      const routineRef = doc(db, "routines", "defaultRoutine");
+      await setDoc(routineRef, routine);
+      toast({
+        title: "Success",
+        description: "Routine saved successfully.",
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error saving routine:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to save routine.",
+      });
     }
   };
 
+  const resetRoutine = async () => {
+    if (user?.role !== "admin") {
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: "Only admins can reset the routine.",
+      });
+      return;
+    }
+    try {
+      const routineRef = doc(db, "routines", "defaultRoutine");
+      const defaultRoutine = {
+        schoolName: "MySchool-মাইস্কুল",
+        classLevels: [
+          { name: "প্লে", teacher: "শিক্ষক এ" },
+          { name: "নার্সারি", teacher: "শিক্ষক বি" },
+          { name: "প্রথম", teacher: "শিক্ষক সি" },
+          { name: "দ্বিতীয়", teacher: "শিক্ষক ডি" },
+          { name: "তৃতীয়", teacher: "শিক্ষক ই" },
+          { name: "চতুর্থ", teacher: "শিক্ষক এফ" },
+          { name: "পঞ্চম", teacher: "শিক্ষক জি" },
+        ],
+        timeSlots: [
+          "8:00 - 8:40 AM",
+          "8:41 - 9:05 AM",
+          "9:06 - 9:46 AM",
+          "9:47 - 10:27 AM",
+          "10:28 - 11:08 AM",
+          "11:09 - 11:41 AM",
+          "11:41 - 12:00 PM",
+          "12:01 - 12:36 PM",
+          "12:37 - 1:12 PM",
+          "1:13 - 1:48 PM",
+          "1:49 - 2:24 PM",
+        ],
+        schedule: {
+          "8:00 - 8:40 AM": Array(7).fill({ name: "আরবি মকতব", teacher: "মিস আরবি" }),
+          "8:41 - 9:05 AM": Array(7).fill({ name: "শারীরিক প্রশিক্ষণ", teacher: "কোচ পিটি" }),
+          "9:06 - 9:46 AM": [
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+            { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+            { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+            { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+          ],
+          "9:47 - 10:27 AM": [
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "সামাজিক বিজ্ঞান", teacher: "মি. অ্যালেক্স" },
+            { name: "সামাজিক বিজ্ঞান", teacher: "মি. অ্যালেক্স" },
+            { name: "সামাজিক বিজ্ঞান", teacher: "মি. অ্যালেক্স" },
+          ],
+          "10:28 - 11:08 AM": [
+            { name: "শিল্পকলা", teacher: "মিস লিলি" },
+            { name: "শিল্পকলা", teacher: "মিস লিলি" },
+            { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+            { name: "বিজ্ঞান", teacher: "ড. স্মিথ" },
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "গণিত", teacher: "মি. জন" },
+          ],
+          "11:09 - 11:41 AM": [
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+            { name: "ইংরেজি", teacher: "মিস এমা" },
+          ],
+          "11:41 - 12:00 PM": Array(7).fill({ name: "অবসর সময়", teacher: "-" }),
+          "12:01 - 12:36 PM": [
+            null,
+            null,
+            null,
+            null,
+            { name: "শিল্পকলা", teacher: "মিস লিলি" },
+            { name: "শিল্পকলা", teacher: "মিস লিলি" },
+            { name: "শিল্পকলা", teacher: "মিস লিলি" },
+          ],
+          "12:37 - 1:12 PM": [
+            null,
+            null,
+            null,
+            null,
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+            { name: "ভাষা", teacher: "মিস গার্সিয়া" },
+          ],
+          "1:13 - 1:48 PM": [
+            null,
+            null,
+            null,
+            null,
+            { name: "সমীক্ষা", teacher: "মি. রায়ান" },
+            { name: "সমীক্ষা", teacher: "মি. রায়ান" },
+            { name: "সমীক্ষা", teacher: "মি. রায়ান" },
+          ],
+          "1:49 - 2:24 PM": [
+            null,
+            null,
+            null,
+            null,
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "গণিত", teacher: "মি. জন" },
+            { name: "গণিত", teacher: "মি. জন" },
+          ],
+        },
+      };
+      await setDoc(routineRef, defaultRoutine);
+      setRoutine(defaultRoutine);
+      toast({
+        title: "Success",
+        description: "Routine reset successfully.",
+      });
+    } catch (error) {
+      console.error("Error resetting routine:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to reset routine.",
+      });
+    }
+  };
+
+  const handleEditSchoolName = (value) => {
+    if (value.trim()) {
+      setRoutine((prev) => ({ ...prev, schoolName: value }));
+    }
+  };
+
+  const handleEditClass = (index, field, value) => {
+    if (value.trim()) {
+      setRoutine((prev) => {
+        const updatedClasses = [...prev.classLevels];
+        updatedClasses[index] = { ...updatedClasses[index], [field]: value };
+        return { ...prev, classLevels: updatedClasses };
+      });
+    }
+  };
+
+  const handleEditSchedule = (timeSlot, classIndex, field, value) => {
+    setRoutine((prev) => {
+      const updatedSchedule = { ...prev.schedule };
+      const updatedSlot = [...(updatedSchedule[timeSlot] || Array(prev.classLevels.length).fill(null))];
+      updatedSlot[classIndex] = {
+        ...updatedSlot[classIndex],
+        [field]: value,
+        name: field === "name" ? value : updatedSlot[classIndex]?.name || "",
+        teacher: field === "teacher" ? value : updatedSlot[classIndex]?.teacher || "",
+      };
+      updatedSchedule[timeSlot] = updatedSlot;
+      return { ...prev, schedule: updatedSchedule };
+    });
+  };
+
+  const getSubjectColor = (subjectName) => subjectColors[subjectName] || "bg-gray-100";
+
+  if (loading || !routine) {
+    return <Loading />;
+  }
+
   return (
-    <div className="p-4 md:p-8 bg-slate-50 min-h-screen">
-      <h1 className="text-2xl md:text-4xl font-bold text-center text-indigo-600 mb-6">
-        {routine.schoolName}
-      </h1>
-
-      {/* Buttons */}
-      <div className="flex flex-col md:flex-row justify-center md:justify-end gap-4 mb-6">
-        <button
-          onClick={generatePDF}
-          className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 md:py-3 rounded-lg hover:bg-indigo-700 transition-all shadow-lg text-sm md:text-base"
-        >
-          <FaDownload className="text-lg" />
-          Export PDF
-        </button>
-        <button
-          onClick={generateImage}
-          className="flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-2 md:py-3 rounded-lg hover:bg-purple-700 transition-all shadow-lg text-sm md:text-base"
-        >
-          <FaImage className="text-lg" />
-          Export Image
-        </button>
-      </div>
-
-      {/* Table Container */}
-      <div ref={routineRef} className="overflow-x-auto bg-white p-4 md:p-8 shadow-xl rounded-2xl mb-8">
-        <table className="w-full text-xs md:text-sm lg:text-base">
-          <thead>
-            <tr className="bg-indigo-600 text-white">
-              <th className="p-3 md:p-4 border border-slate-200">Time</th>
-              {routine.classLevels.map((level, i) => (
-                <th key={level.name} className="p-3 md:p-4 border border-slate-200">
-                  <div className="flex flex-col items-center">
-                    <input
-                      value={level.name}
-                      onChange={(e) => handleEdit("classLevels", i, "name", e.target.value)}
-                      className="w-full text-center bg-transparent border-b border-white focus:outline-none text-xs md:text-sm"
-                    />
-                    <input
-                      value={level.teacher}
-                      onChange={(e) => handleEdit("classLevels", i, "teacher", e.target.value)}
-                      className="w-full text-center bg-transparent border-b border-white focus:outline-none text-xs mt-1"
-                    />
-                  </div>
+    <div className="min-h-screen bg-gray-50 py-4 px-2 sm:px-4 lg:px-6">
+      <div className="max-w-full mx-auto">
+        {user?.role === "admin" && (
+          <div className="bg-white rounded-lg shadow-md p-4 mb-4 flex flex-col sm:flex-row items-center justify-between">
+            <input
+              value={routine.schoolName}
+              onChange={(e) => handleEditSchoolName(e.target.value)}
+              className="text-xl sm:text-2xl font-semibold text-gray-800 text-center sm:text-left bg-transparent focus:outline-none w-full sm:w-auto font-noto"
+              placeholder="স্কুলের নাম লিখুন"
+              disabled={!isEditing}
+            />
+            <div className="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-0 w-full sm:w-auto">
+              <button
+                onClick={() => {
+                  if (isEditing) {
+                    saveRoutine();
+                  } else {
+                    setIsEditing(true);
+                  }
+                }}
+                className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-noto text-sm w-full sm:w-auto"
+                title={isEditing ? "সংরক্ষণ করুন" : "সম্পাদনা করুন"}
+              >
+                {isEditing ? <FaSave /> : <FaEdit />}
+                {isEditing ? "সংরক্ষণ করুন" : "সম্পাদনা করুন"}
+              </button>
+              <button
+                onClick={resetRoutine}
+                className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-noto text-sm w-full sm:w-auto"
+                title="রিসেট করুন"
+              >
+                <FaTrash />
+                রিসেট করুন
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="bg-white rounded-lg shadow-md p-3 mb-4">
+          <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+            {Object.entries(subjectColors).map(([subject, color]) => (
+              <div
+                key={subject}
+                className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full font-noto"
+              >
+                <div className={`w-2 h-2 rounded-full ${color}`} />
+                <span className="text-xs sm:text-sm text-gray-700">{subject}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-md overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm border-collapse">
+            <thead>
+              <tr className="bg-blue-600 text-white font-noto">
+                <th className="p-2 sm:p-3 border-b sticky left-0 z-20 bg-blue-600 min-w-[100px] sm:min-w-[120px]">
+                  সময়
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {routine.timeSlots.map((time, index) => (
-              <tr key={time} className="even:bg-slate-50">
-                <td className="p-3 md:p-4 border border-slate-200 font-medium">{time}</td>
-                {routine.classLevels.map((_, i) => (
-                  <td key={`${time}-${i}`} className="p-3 md:p-4 border border-slate-200">
-                    <div className="flex flex-col items-center">
+                {routine.classLevels.map((level) => (
+                  <th key={level.name} className="p-2 sm:p-3 border-b min-w-[120px] sm:min-w-[150px]">
+                    <div className="flex flex-col items-center gap-1">
                       <input
-                        value={routine.subjects[index].name}
-                        onChange={(e) => handleEdit("subjects", index, "name", e.target.value)}
-                        className="w-full text-center bg-transparent border-b border-slate-300 focus:outline-none text-xs md:text-sm"
+                        value={level.name}
+                        onChange={(e) =>
+                          handleEditClass(routine.classLevels.indexOf(level), "name", e.target.value)
+                        }
+                        className="w-full text-center bg-transparent text-white focus:outline-none border-b border-blue-300 disabled:border-0 font-noto text-xs sm:text-sm"
+                        disabled={user?.role !== "admin" || !isEditing}
+                      />
+                      <input
+                        value={level.teacher}
+                        onChange={(e) =>
+                          handleEditClass(routine.classLevels.indexOf(level), "teacher", e.target.value)
+                        }
+                        className="w-full text-center bg-transparent text-white focus:outline-none border-b border-blue-300 disabled:border-0 text-xs font-noto"
+                        disabled={user?.role !== "admin" || !isEditing}
                       />
                     </div>
-                  </td>
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {routine.timeSlots.map((time, slotIndex) => (
+                <tr
+                  key={time}
+                  className={`border-b ${
+                    slotIndex % 2 === 0 ? "bg-gray-50" : "bg-white"
+                  } hover:bg-blue-50 font-noto`}
+                >
+                  <td
+                    className={`p-2 sm:p-3 border-r sticky left-0 z-10 font-medium ${
+                      slotIndex % 2 === 0 ? "bg-gray-50" : "bg-white"
+                    } min-w-[100px] sm:min-w-[120px]`}
+                  >
+                    {time}
+                  </td>
+                  {routine.classLevels.map((_, classIndex) => {
+                    const subject = routine.schedule[time]?.[classIndex] || null;
+                    return (
+                      <td
+                        key={`${time}-${classIndex}`}
+                        className={`p-2 sm:p-3 border-r ${getSubjectColor(
+                          subject?.name
+                        )} min-w-[120px] sm:min-w-[150px]`}
+                      >
+                        {user?.role === "admin" && isEditing ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <input
+                              value={subject?.name || ""}
+                              onChange={(e) =>
+                                handleEditSchedule(time, classIndex, "name", e.target.value)
+                              }
+                              className="w-full text-center bg-transparent border-b border-gray-400 focus:outline-none text-xs sm:text-sm font-noto"
+                              placeholder="বিষয় লিখুন"
+                            />
+                            <input
+                              value={subject?.teacher || ""}
+                              onChange={(e) =>
+                                handleEditSchedule(time, classIndex, "teacher", e.target.value)
+                              }
+                              className="w-full text-center bg-transparent border-b border-gray-400 focus:outline-none text-xs font-noto"
+                              placeholder="শিক্ষকের নাম"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center text-center">
+                            <span className="font-medium text-xs sm:text-sm">
+                              {subject?.name || "-"}
+                            </span>
+                            <span className="text-xs text-gray-600">{subject?.teacher || "-"}</span>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
