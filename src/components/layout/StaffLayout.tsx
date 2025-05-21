@@ -38,31 +38,7 @@ const navLinks = [
     label: "Routine",
     icon: <BookCheck size={18} />,
   },
-  {
-    path: "/staff/classes",
-    label: "Classes",
-    icon: <BookOpen size={18} />,
-  },
-  {
-    path: "/staff/schedules",
-    label: "Schedules",
-    icon: <Calendar size={18} />,
-  },
-  {
-    path: "/staff/attendance",
-    label: "Attendance",
-    icon: <FileText size={18} />,
-  },
-  {
-    path: "/staff/messages",
-    label: "Messages",
-    icon: <MessageSquare size={18} />,
-  },
-  {
-    path: "/staff/notifications",
-    label: "Notifications",
-    icon: <Bell size={18} />,
-  },
+
 
 ];
 

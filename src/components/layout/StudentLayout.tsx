@@ -18,11 +18,7 @@ import {
 
 // Centralized navigation links
 const navLinks = [
-  {
-    path: "/student/classes",
-    label: "My Classes",
-    icon: <BookOpen size={18} />,
-  },
+ 
   {
     path: "/student/tasks",
     label: "My Tasks",
@@ -38,36 +34,7 @@ const navLinks = [
     label: "Routine",
     icon: <BookCheck size={18} />,
   },
-  {
-    path: "/student/assignments",
-    label: "Assignments",
-    icon: <FileText size={18} />,
-  },
-  {
-    path: "/student/grades",
-    label: "Grades",
-    icon: <BookOpen size={18} />,
-  },
-  {
-    path: "/student/schedule",
-    label: "Schedule",
-    icon: <Calendar size={18} />,
-  },
-  {
-    path: "/student/resources",
-    label: "Resources",
-    icon: <FileText size={18} />,
-  },
-  {
-    path: "/student/messages",
-    label: "Messages",
-    icon: <MessageSquare size={18} />,
-  },
-  {
-    path: "/student/notifications",
-    label: "Notifications",
-    icon: <Bell size={18} />,
-  },
+
 ];
 
 export const StudentLayout = () => {

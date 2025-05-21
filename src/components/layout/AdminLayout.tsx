@@ -9,7 +9,8 @@ import {
   DollarSign, Calendar, Settings, LogOut, Menu, X, ChevronRight,
   Bot,
   ListTodo,
-  SettingsIcon, Briefcase
+  SettingsIcon, Briefcase,
+  Target
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,10 +31,8 @@ export const AdminLayout = () => {
     { path: '/admin/assets-management', label: 'Assets', icon: <Briefcase className="h-5 w-5" /> },
     { path: '/admin/sms-service', label: 'SMS Service', icon: <MessageSquare className="h-5 w-5" /> },
     { path: '/admin/myschool-suite', label: 'Content Generator', icon: <Calendar className="h-5 w-5" /> },
-    { path: '/admin/myschool-ai', label: 'MySchool AI', icon: <Bot className="h-5 w-5" /> },
-    { path: '/admin/users-task-management', label: 'Users Tasks', icon: <ListTodo className="h-5 w-5" /> },
-    { path: '/admin/settings', label: 'Settings', icon: <SettingsIcon className="h-5 w-5" /> },
-  ];
+    { path: '/admin/marketing', label: 'Marketing Leads', icon: <Target className="h-5 w-5" /> },
+    ];
 
   const handleLogout = async () => {
     try {

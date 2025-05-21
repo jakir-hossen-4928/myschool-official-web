@@ -17,7 +17,7 @@ import { BookIcon, BriefcaseIcon, UploadIcon, LockIcon, MailIcon, EyeIcon, EyeOf
 import { z } from 'zod';
 
 // Define constants for dropdown options
-const CLASS_OPTIONS = ["নার্সারি", "প্লে", "প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ", "পঞ্চম", "ষষ্ঠ"];
+const CLASS_OPTIONS = ["নার্সারি", "প্লে", "প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ", "পঞ্চম"];
 const SUBJECT_OPTIONS = ["বাংলা", "ইংরেজি", "আরবি", "গণিত", "বিজ্ঞান", "সমাজ ও বিশ্ব পরিচয়"];
 const BLOOD_GROUP_OPTIONS = ["A+", "A−", "B+", "B−", "AB+", "AB−", "O+", "O−"];
 const DESIGNATION_OPTIONS = [

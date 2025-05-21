@@ -3,16 +3,11 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
-  User as FirebaseUser,
-  GoogleAuthProvider,
-  signInWithPopup,
+  User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, query, collection, where, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { User, StudentData, StaffData } from '../lib/types';
-
-// Google Auth Provider
-const googleProvider = new GoogleAuthProvider();
 
 export const register = async (
   email: string,
@@ -64,66 +59,24 @@ export const register = async (
   }
 };
 
-// Updated login function to allow Google login only for verified users with existing Firestore doc
 export const login = async (
   email?: string,
-  password?: string,
-  useGoogle: boolean = false
+  password?: string
 ): Promise<User> => {
   try {
-    let userCredential;
-
-    if (useGoogle) {
-      // Google Sign-In
-      userCredential = await signInWithPopup(auth, googleProvider);
-      const userEmail = userCredential.user.email;
-      if (!userEmail) {
-        throw new Error('Google account has no email associated.');
-      }
-
-      // Check if email exists in Firestore and user is verified
-      const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
-      const querySnapshot = await getDocs(usersQuery);
-
-      if (querySnapshot.empty) {
-        // Email not found in Firestore
-        await firebaseSignOut(auth); // Sign out to prevent unauthorized access
-        throw new Error('This email is not registered. Please sign up first.');
-      }
-
-      const userDoc = querySnapshot.docs[0];
-      const userData = userDoc.data() as User;
-
-      if (!userData.verified) {
-        await firebaseSignOut(auth); // Sign out unverified user
-        throw new Error('Your account is not verified. Please wait for admin approval.');
-      }
-
-      // Ensure Firestore user ID matches Firebase Auth UID
-      if (userDoc.id !== userCredential.user.uid) {
-        await firebaseSignOut(auth); // Sign out if UIDs don't match
-        throw new Error('User ID mismatch. Please contact support.');
-      }
-    } else if (email && password) {
-      // Email/Password Sign-In
-      userCredential = await signInWithEmailAndPassword(auth, email, password);
-    } else {
+    if (!email || !password) {
       throw new Error('Invalid login credentials');
     }
-
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-
     if (!userDoc.exists()) {
       throw new Error('User data not found in Firestore');
     }
-
     const userData = userDoc.data() as User;
-
     if (userData.verified === false) {
       await firebaseSignOut(auth); // Sign out unverified user
       throw new Error('Your account is not verified. Please wait for admin approval.');
     }
-
     const user: User = {
       id: userCredential.user.uid,
       email: userCredential.user.email,
@@ -131,7 +84,6 @@ export const login = async (
       verified: userData.verified,
       createdAt: userData.createdAt,
     };
-
     // Fetch additional data based on role
     if (userData.role === 'student') {
       const studentDoc = await getDoc(doc(db, 'students', userCredential.user.uid));
@@ -144,18 +96,12 @@ export const login = async (
         user.staffData = staffDoc.data() as StaffData;
       }
     }
-
     console.log('Logged in user:', user);
     return user;
   } catch (error: any) {
     console.error('Error signing in:', error);
     throw new Error(error.message || 'Failed to sign in');
   }
-};
-
-// Convenience function for Google login
-export const loginWithGoogle = async (): Promise<User> => {
-  return login(undefined, undefined, true);
 };
 
 export const getCurrentUser = async (): Promise<User | null> => {

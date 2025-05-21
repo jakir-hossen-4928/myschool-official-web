@@ -830,8 +830,7 @@ const AssetsManegment: React.FC = () => {
     }
   };
 
-// Handle PDF export
-const handleExportPDF = () => {
+  const handleExportPDF = () => {
   setIsProcessing(true);
   const exportDate = new Date().toLocaleDateString();
   const totalAssets = filteredAssets.length;
@@ -850,26 +849,117 @@ const handleExportPDF = () => {
         <head>
           <title>MySchool - Asset Report</title>
           <style>
-            @media print { @page { margin: 2cm; } }
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #333; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #3498db; padding-bottom: 15px; }
-            .header h1 { color: #2c3e50; margin: 0; font-size: 28px; }
-            .stats { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; font-size: 14px; }
-            .summary { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
-            .summary h3 { margin: 0 0 10px 0; font-size: 16px; color: #2c3e50; }
-            .summary p { margin: 5px 0; color: #555; }
-            table { width: 100%; border-collapse: collapse; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 13px; }
-            th { background-color: #3498db; color: white; font-weight: bold; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            tr:hover { background-color: #f1f1f1; }
-            img { max-width: 60px; height: auto; border-radius: 4px; display: block; }
-            .footer { margin-top: 20px; text-align: center; color: #777; font-size: 12px; }
+            @media print {
+              @page { margin: 2cm; }
+              th {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 20px;
+              color: #333;
+              line-height: 1.5;
+            }
+            .container {
+              max-width: 1200px;
+              margin: 0 auto;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              border-bottom: 2px solid #3498db;
+              padding-bottom: 15px;
+            }
+            .header h1 {
+              color: #2c3e50;
+              margin: 0;
+              font-size: 28px;
+              font-weight: 700;
+            }
+            .header p {
+              color: #555;
+              font-size: 14px;
+              margin: 5px 0 0;
+            }
+            .stats {
+              background: #f8f9fa;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              display: flex;
+              justify-content: space-between;
+              font-size: 14px;
+              border: 1px solid #ddd;
+            }
+            .summary {
+              background: #f8f9fa;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              font-size: 14px;
+              border: 1px solid #ddd;
+            }
+            .summary h3 {
+              margin: 0 0 10px 0;
+              font-size: 16px;
+              color: #2c3e50;
+            }
+            .summary p {
+              margin: 5px 0;
+              color: #555;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            th, td {
+              border: 1px solid #ddd;
+              padding: 10px;
+              text-align: left;
+              font-size: 13px;
+            }
+            th {
+              background-color: #3498db;
+              color: #fff;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            tr:nth-child(even) {
+              background-color: #f9f9f9;
+            }
+            tr:hover {
+              background-color: #f1f1f1;
+            }
+            img {
+              max-width: 60px;
+              height: auto;
+              border-radius: 4px;
+              display: block;
+            }
+            .footer {
+              margin-top: 20px;
+              text-align: center;
+              color: #777;
+              font-size: 12px;
+              border-top: 1px solid #ddd;
+              padding-top: 15px;
+            }
             @media (max-width: 768px) {
-              table, th, td { font-size: 11px; padding: 6px; }
-              img { max-width: 40px; }
-              .stats, .summary { flex-direction: column; gap: 8px; }
+              table, th, td {
+                font-size: 11px;
+                padding: 6px;
+              }
+              img {
+                max-width: 40px;
+              }
+              .stats, .summary {
+                flex-direction: column;
+                gap: 8px;
+              }
             }
           </style>
         </head>
@@ -877,6 +967,7 @@ const handleExportPDF = () => {
           <div class="container">
             <div class="header">
               <h1>MySchool - Asset Report</h1>
+              <p>Generated on: ${exportDate}</p>
             </div>
             <div class="stats">
               <span>Total Assets: ${totalAssets}</span>
@@ -904,11 +995,11 @@ const handleExportPDF = () => {
                 .map(
                   (asset) => `
                 <tr>
-                  <td>${asset.assetId}</td>
-                  <td>${asset.name}</td>
-                  <td>${asset.category}</td>
-                  <td>${asset.status}</td>
-                  <td>${asset.location || "-"}</td>
+                  <td>${asset.assetId || '-'}</td>
+                  <td>${asset.name || '-'}</td>
+                  <td>${asset.category || '-'}</td>
+                  <td>${asset.status || '-'}</td>
+                  <td>${asset.location || '-'}</td>
                   <td>${
                     asset.createdAt
                       ? new Date(asset.createdAt.toDate()).toLocaleString("en-US", {
@@ -919,17 +1010,17 @@ const handleExportPDF = () => {
                           minute: "2-digit",
                           hour12: true,
                         })
-                      : "-"
+                      : '-'
                   }</td>
                   <td>${
                     asset.imageUrl
-                      ? `<img src="${asset.imageUrl}" alt="${asset.name}" onerror="this.style.display='none';this.nextSibling.style.display='block'" /><span style="display:none">Image not available</span>`
-                      : "No image"
+                      ? `<img src="${asset.imageUrl}" alt="${asset.name || 'Asset'}" onerror="this.style.display='none';this.nextSibling.style.display='block'" /><span style="display:none">Image not available</span>`
+                      : 'No image'
                   }</td>
                 </tr>
               `
                 )
-                .join("")}
+                .join('')}
             </table>
             <div class="footer">
               Generated by MySchool Official Website • https://myschool-offical.netlify.app
@@ -945,6 +1036,7 @@ const handleExportPDF = () => {
   }
   setIsProcessing(false);
 };
+
 
   // Handle CSV export
   const handleExportCSV = () => {

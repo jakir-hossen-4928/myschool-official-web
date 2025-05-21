@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Clock, PlayCircle, AlertCircle, User as UserIcon, Trash2, Edit2, X, Plus } from 'lucide-react';
+import { CheckCircle2, Clock, PlayCircle, AlertCircle, Trash2, Edit2, X, Plus } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectItem, SelectContent } from "@/components/ui/select";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
@@ -13,7 +13,7 @@ import { getCurrentUser, User } from "@/lib/auth";
 
 interface Task {
     $id: string;
-    employeeId: string;
+    userId: string;
     title: string;
     task_description: string;
     date: string;
@@ -30,10 +30,7 @@ interface Task {
 const TodoListDashboard = () => {
     const { toast } = useToast();
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [employees, setEmployees] = useState<User[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
-    const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'staff'>('all');
     const [newTask, setNewTask] = useState({
         title: '',
         description: '',
@@ -51,7 +48,7 @@ const TodoListDashboard = () => {
     const [loading, setLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Utility function to format time string (e.g., "12:10" to "12:10 PM")
+    // Utility function to format time string
     const formatTime = (time: string): string => {
         if (!time) return 'N/A';
         const [hours, minutes] = time.split(':').map(Number);
@@ -74,21 +71,6 @@ const TodoListDashboard = () => {
                     return;
                 }
 
-                // Fetch employees
-                const usersCollection = collection(db, 'users');
-                const usersQuery = user.role === 'admin'
-                    ? usersCollection
-                    : query(usersCollection, where('id', '==', user.id));
-                const usersSnapshot = await getDocs(usersQuery);
-                const fetchedEmployees = usersSnapshot.docs
-                    .map(doc => ({ id: doc.id, ...doc.data() } as User))
-                    .filter(emp => emp.role !== 'admin');
-                setEmployees(fetchedEmployees);
-
-                if (user.role !== 'admin') {
-                    setSelectedEmployeeId(user.id);
-                }
-
                 await fetchTasks(user);
             } catch (error: any) {
                 toast({ variant: "destructive", title: "Error", description: error.message });
@@ -103,9 +85,7 @@ const TodoListDashboard = () => {
     const fetchTasks = async (user: User) => {
         try {
             const tasksCollection = collection(db, 'tasks');
-            const tasksQuery = user.role === 'admin'
-                ? tasksCollection
-                : query(tasksCollection, where('employeeId', '==', user.id));
+            const tasksQuery = query(tasksCollection, where('userId', '==', user.id));
             const tasksSnapshot = await getDocs(tasksQuery);
             const fetchedTasks = tasksSnapshot.docs.map(doc => ({
                 $id: doc.id,
@@ -134,16 +114,9 @@ const TodoListDashboard = () => {
             status: 'Not Started'
         });
         setEditingTask(null);
-        if (currentUser?.role !== 'admin') {
-            setSelectedEmployeeId(currentUser?.id || 'all');
-        }
     };
 
     const validateTaskForm = () => {
-        if (!selectedEmployeeId && currentUser?.role === 'admin') {
-            toast({ variant: "destructive", title: "Error", description: "Please select an employee" });
-            return false;
-        }
         if (!newTask.title.trim()) {
             toast({ variant: "destructive", title: "Error", description: "Task title is required" });
             return false;
@@ -160,116 +133,78 @@ const TodoListDashboard = () => {
 
         setIsProcessing(true);
         const currentDate = new Date();
-        const taskData: Task = {
-          $id: editingTask?.$id || '', // Will be updated for new tasks
-          employeeId: selectedEmployeeId === 'all' ? currentUser.id : selectedEmployeeId,
-          title: newTask.title.trim(),
-          task_description: newTask.description.trim(),
-          date: selectedDate,
-          status: newTask.status,
-          priority: newTask.priority,
-          progress_notes: newTask.progressNotes.trim(),
-          progress: newTask.progress,
-          created_at: editingTask?.created_at || currentDate.toISOString(),
-          last_updated: currentDate.toISOString(),
-          task_start_time: newTask.startTime,
-          task_end_time: newTask.endTime,
+        const taskData = {
+            userId: currentUser.id,
+            title: newTask.title.trim(),
+            task_description: newTask.description.trim(),
+            date: selectedDate,
+            status: newTask.status,
+            priority: newTask.priority,
+            progress_notes: newTask.progressNotes.trim(),
+            progress: newTask.progress,
+            created_at: editingTask?.created_at || currentDate.toISOString(),
+            last_updated: currentDate.toISOString(),
+            task_start_time: newTask.startTime,
+            task_end_time: newTask.endTime,
         };
 
         try {
-          if (editingTask) {
-            const taskRef = doc(db, 'tasks', editingTask.$id);
-            await updateDoc(taskRef, taskData);
-            toast({ title: 'Success', description: 'Task updated successfully' });
-          } else {
-            const docRef = await addDoc(collection(db, 'tasks'), {
-              ...taskData,
-              $id: '', // Placeholder, will update after
-            });
-            // Update the document with its own Firestore ID
-            await updateDoc(doc(db, 'tasks', docRef.id), { $id: docRef.id });
-            taskData.$id = docRef.id; // Update taskData with Firestore ID
-            toast({ title: 'Success', description: 'Task added successfully' });
-          }
+            if (editingTask) {
+                const taskRef = doc(db, 'tasks', editingTask.$id);
+                await updateDoc(taskRef, taskData);
+                toast({ title: 'Success', description: 'Task updated successfully' });
+            } else {
+                const docRef = await addDoc(collection(db, 'tasks'), taskData);
+                taskData.$id = docRef.id;
+                toast({ title: 'Success', description: 'Task added successfully' });
+            }
 
-          setTasks((prev) =>
-            editingTask
-              ? prev.map((t) => (t.$id === taskData.$id ? taskData : t))
-              : [...prev, taskData]
-          );
+            setTasks((prev) =>
+                editingTask
+                    ? prev.map((t) => (t.$id === editingTask.$id ? { ...taskData, $id: editingTask.$id } : t))
+                    : [...prev, { ...taskData, $id: taskData.$id }]
+            );
 
-          setTaskDialogOpen(false);
-          resetTaskForm();
+            setTaskDialogOpen(false);
+            resetTaskForm();
         } catch (error: any) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: error.message || 'Failed to add or update task',
-          });
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: error.message || 'Failed to add or update task',
+            });
         } finally {
-          setIsProcessing(false);
+            setIsProcessing(false);
         }
-      };
+    };
 
-      const handleDeleteTask = async (taskId: string) => {
+    const handleDeleteTask = async (taskId: string) => {
         if (!currentUser) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'User not authenticated',
-          });
-          return;
-        }
-
-        if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'Invalid task ID',
-          });
-          return;
-        }
-
-        const taskToDelete = tasks.find((t) => t.$id === taskId);
-        if (!taskToDelete) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'Task not found',
-          });
-          return;
-        }
-
-        if (currentUser.role !== 'admin' && taskToDelete.employeeId !== currentUser.id) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'You can only delete your own tasks',
-          });
-          return;
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'User not authenticated',
+            });
+            return;
         }
 
         setIsProcessing(true);
         try {
-          await deleteDoc(doc(db, 'tasks', taskId));
-          setTasks((prev) => prev.filter((t) => t.$id !== taskId));
-          toast({ title: 'Success', description: 'Task deleted successfully' });
+            await deleteDoc(doc(db, 'tasks', taskId));
+            setTasks((prev) => prev.filter((t) => t.$id !== taskId));
+            toast({ title: 'Success', description: 'Task deleted successfully' });
         } catch (error: any) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: error.message || 'Failed to delete task',
-          });
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: error.message || 'Failed to delete task',
+            });
         } finally {
-          setIsProcessing(false);
+            setIsProcessing(false);
         }
-      };
+    };
 
     const handleEditTask = (task: Task) => {
-        if (currentUser?.role !== 'admin' && task.employeeId !== currentUser?.id) {
-            toast({ variant: "destructive", title: "Error", description: "You can only edit your own tasks" });
-            return;
-        }
         setEditingTask(task);
         setNewTask({
             title: task.title,
@@ -281,31 +216,17 @@ const TodoListDashboard = () => {
             endTime: task.task_end_time,
             status: task.status
         });
-        setSelectedEmployeeId(task.employeeId);
         setTaskDialogOpen(true);
-    };
-
-
-
-    const getEmployeeName = (employeeId: string) => {
-        if (currentUser && employeeId === currentUser.id) {
-            return currentUser.name || currentUser.email || 'You';
-        }
-        const employee = employees.find(emp => emp.id === employeeId);
-        return employee?.name || employee?.email || 'No Email';
     };
 
     // Filtered tasks
     const filteredTasks = useMemo(() => {
         return tasks.filter(task => {
             const taskDate = task.date.split('T')[0];
-            const employee = employees.find(emp => emp.id === task.employeeId);
             return taskDate === selectedDate &&
-                (selectedEmployeeId === 'all' || task.employeeId === selectedEmployeeId) &&
-                (statusFilter === 'all' || task.status === statusFilter) &&
-                (roleFilter === 'all' || employee?.role === roleFilter);
+                (statusFilter === 'all' || task.status === statusFilter);
         });
-    }, [tasks, selectedDate, selectedEmployeeId, statusFilter, roleFilter, employees]);
+    }, [tasks, selectedDate, statusFilter]);
 
     // UI Helper Functions
     const getStatusStyles = (status: string) => {
@@ -326,14 +247,12 @@ const TodoListDashboard = () => {
         }[priority] || 'bg-gray-100 text-gray-700';
     };
 
-
-
     return (
         <div className="min-h-screen bg-gray-50 p-6">
             <div className="max-w-5xl mx-auto space-y-6">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <h1 className="text-2xl font-semibold text-blue-600">Task Manager</h1>
+                    <h1 className="text-2xl font-semibold text-blue-600">My Tasks</h1>
                     <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                         <Input
                             type="date"
@@ -358,22 +277,6 @@ const TodoListDashboard = () => {
 
                 {/* Filters */}
                 <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-lg shadow-sm">
-                    {currentUser?.role === 'admin' && (
-                        <Select
-                            value={roleFilter}
-                            onValueChange={(value) => setRoleFilter(value as 'all' | 'student' | 'staff')}
-                            disabled={loading || isProcessing}
-                        >
-                            <SelectTrigger className="w-full sm:w-40 border-blue-200 rounded-lg">
-                                <SelectValue placeholder="Role" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Roles</SelectItem>
-                                <SelectItem value="student">Students</SelectItem>
-                                <SelectItem value="staff">Staff</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    )}
                     <Select
                         value={statusFilter}
                         onValueChange={setStatusFilter}
@@ -390,27 +293,9 @@ const TodoListDashboard = () => {
                             <SelectItem value="Completed">Completed</SelectItem>
                         </SelectContent>
                     </Select>
-                    {currentUser?.role === 'admin' && (
-                        <Select
-                            value={selectedEmployeeId}
-                            onValueChange={setSelectedEmployeeId}
-                            disabled={loading || isProcessing}
-                        >
-                            <SelectTrigger className="w-full sm:w-40 border-blue-200 rounded-lg">
-                                <SelectValue placeholder="Employee" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Employees</SelectItem>
-                                {employees.map(employee => (
-                                    <SelectItem key={employee.id} value={employee.id}>
-                                        {employee.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
                 </div>
 
+                {/* Task List */}
                 <div className="grid grid-cols-1 gap-4">
                     {filteredTasks.map(task => (
                         <div key={task.$id} className="bg-white p-4 rounded-lg shadow-sm border border-blue-100">
@@ -421,7 +306,6 @@ const TodoListDashboard = () => {
                                     </span>
                                     <div>
                                         <h3 className="text-base font-medium text-gray-800">{task.title}</h3>
-                                        <p className="text-sm text-gray-600">{getEmployeeName(task.employeeId)}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -461,7 +345,6 @@ const TodoListDashboard = () => {
                                 <Progress
                                     value={task.progress}
                                     className="h-2 mt-2 bg-blue-100"
-                                    indicatorColor="bg-blue-600"
                                 />
                             </div>
                         </div>
@@ -498,25 +381,6 @@ const TodoListDashboard = () => {
                             </div>
 
                             <div className="space-y-4">
-                                {currentUser?.role === 'admin' && (
-                                    <Select
-                                        value={selectedEmployeeId}
-                                        onValueChange={setSelectedEmployeeId}
-                                        disabled={isProcessing}
-                                    >
-                                        <SelectTrigger className="border-blue-200 rounded-lg">
-                                            <SelectValue placeholder="Select Employee" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {employees.map(employee => (
-                                                <SelectItem key={employee.id} value={employee.id}>
-                                                    {employee.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-
                                 <Input
                                     placeholder="Task Title"
                                     value={newTask.title}

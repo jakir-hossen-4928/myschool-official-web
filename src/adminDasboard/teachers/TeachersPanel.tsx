@@ -230,93 +230,195 @@ const TeachersPanel: React.FC = () => {
   };
 
   // PDF export function
-  const exportToPDF = () => {
-    const totalTeachers = teachers.length;
-    const exportDate = new Date().toLocaleDateString();
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>MySchool-মাইস্কুল Staff Directory</title>
-            <style>
-                                @media print { @page { margin: 2cm; } }
-                                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #333; }
-                                .container { max-width: 1200px; margin: 0 auto; }
-                                .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #3498db; padding-bottom: 15px; }
-                                .header h1 { color: #2c3e50; margin: 0; font-size: 28px; }
-                                .stats { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; font-size: 14px; }
-                                table { width: 100%; border-collapse: collapse; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-                                th, td { border: 1px solid #ddd; padding: 12px; text-align: left; font-size: 14px; }
-                                th { background-color: #3498db; color: white; font-weight: bold; }
-                                tr:nth-child(even) { background-color: #f9f9f9; }
-                                tr:hover { background-color: #f1f1f1; }
-                                img { max-width: 100px; height: auto; border-radius: 4px; display: block; }
-                                .footer { margin-top: 20px; text-align: center; color: #777; font-size: 12px; }
-                                @media (max-width: 768px) { table, th, td { font-size: 12px; padding: 8px; } img { max-width: 60px; } }
-                              </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>MySchool-মাইস্কুল Staff Directory</h1>
-              </div>
-              <div class="stats">
-                <span>Total Staff: ${totalTeachers}</span>
-                <span>Exported on: ${exportDate}</span>
-              </div>
-              <table>
+   const exportToPDF = () => {
+  const totalTeachers = teachers.length;
+  const exportDate = new Date().toLocaleDateString();
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>MySchool-মাইস্কুল Staff Directory</title>
+          <style>
+            @media print {
+              @page { margin: 0; }
+              thead { display: table-header-group; }
+              th {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            }
+            body {
+              font-family: 'Helvetica Neue', Arial, sans-serif;
+              margin: 0;
+              padding: 10px;
+              color: #333;
+              line-height: 1.5;
+            }
+            .container {
+              width: 100%;
+              max-width: none;
+              margin: 0;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 20px;
+              border-bottom: 2px solid #3498db;
+              padding-bottom: 10px;
+              background-color: #f8f9fa;
+            }
+            .header h1 {
+              color: #2c3e50;
+              margin: 0;
+              font-size: 24px;
+              font-weight: 700;
+            }
+            .header p {
+              color: #555;
+              font-size: 12px;
+              margin: 5px 0 0;
+            }
+            .stats {
+              background: #f8f9fa;
+              padding: 10px;
+              border-radius: 8px;
+              margin-bottom: 15px;
+              display: flex;
+              justify-content: space-between;
+              font-size: 12px;
+              border: 1px solid #ddd;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+              margin-top: 0;
+            }
+            thead {
+              display: table-header-group;
+            }
+            th, td {
+              border: 1px solid #ddd;
+              padding: 8px;
+              text-align: left;
+              font-size: 12px;
+              word-wrap: break-word;
+              white-space: normal;
+            }
+            th {
+              background-color: #3498db;
+              color: #fff;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            tr:nth-child(even) {
+              background-color: #f9f9f9;
+            }
+            tr:hover {
+              background-color: #f1f1f1;
+            }
+            img {
+              max-width: 80px;
+              height: auto;
+              border-radius: 4px;
+              display: block;
+            }
+            .footer {
+              margin-top: 15px;
+              text-align: center;
+              color: #777;
+              font-size: 10px;
+              border-top: 1px solid #ddd;
+              padding-top: 10px;
+            }
+            @media (max-width: 768px) {
+              table, th, td {
+                font-size: 10px;
+                padding: 6px;
+              }
+              img {
+                max-width: 50px;
+              }
+              .header h1 {
+                font-size: 20px;
+              }
+              .header p {
+                font-size: 10px;
+              }
+              .stats {
+                flex-direction: column;
+                gap: 6px;
+                font-size: 10px;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>MySchool-মাইস্কুল Staff Directory</h1>
+              <p>Generated on: ${exportDate}</p>
+            </div>
+            <div class="stats">
+              <span>Total Staff: ${totalTeachers}</span>
+              <span>Exported on: ${exportDate}</span>
+            </div>
+            <table>
+              <thead>
                 <tr>
-                  ${visibleFieldKeys.includes('staffId') ? '<th>Staff ID</th>' : ''}
-                  ${visibleFieldKeys.includes('nameBangla') ? '<th>Name (Bangla)</th>' : ''}
-                  ${visibleFieldKeys.includes('nameEnglish') ? '<th>Name (English)</th>' : ''}
-                  ${visibleFieldKeys.includes('subject') ? '<th>Subject</th>' : ''}
-                  ${visibleFieldKeys.includes('designation') ? '<th>Designation</th>' : ''}
-                  ${visibleFieldKeys.includes('joiningDate') ? '<th>Joining Date</th>' : ''}
-                  ${visibleFieldKeys.includes('nid') ? '<th>NID</th>' : ''}
-                  ${visibleFieldKeys.includes('mobile') ? '<th>Mobile</th>' : ''}
-                  ${visibleFieldKeys.includes('salary') ? '<th>Salary</th>' : ''}
-                  ${visibleFieldKeys.includes('email') ? '<th>Email</th>' : ''}
-                  ${visibleFieldKeys.includes('address') ? '<th>Address</th>' : ''}
-                  ${visibleFieldKeys.includes('bloodGroup') ? '<th>Blood Group</th>' : ''}
-
-                  ${visibleFieldKeys.includes('photoUrl') ? '<th>Photo</th>' : ''}
+                  ${visibleFieldKeys.includes('staffId') ? '<th style="width: 10%;">Staff ID</th>' : ''}
+                  ${visibleFieldKeys.includes('nameBangla') ? '<th style="width: 10%;">Name (Bangla)</th>' : ''}
+                  ${visibleFieldKeys.includes('nameEnglish') ? '<th style="width: 10%;">Name (English)</th>' : ''}
+                  ${visibleFieldKeys.includes('designation') ? '<th style="width: 10%;">Designation</th>' : ''}
+                  ${visibleFieldKeys.includes('joiningDate') ? '<th style="width: 10%;">Joining Date</th>' : ''}
+                  ${visibleFieldKeys.includes('nid') ? '<th style="width: 10%;">NID</th>' : ''}
+                  ${visibleFieldKeys.includes('mobile') ? '<th style="width: 10%;">Mobile</th>' : ''}
+                  ${visibleFieldKeys.includes('salary') ? '<th style="width: 8%;">Salary</th>' : ''}
+                  ${visibleFieldKeys.includes('email') ? '<th style="width: 10%;">Email</th>' : ''}
+                  ${visibleFieldKeys.includes('address') ? '<th style="width: 12%;">Address</th>' : ''}
+                  ${visibleFieldKeys.includes('bloodGroup') ? '<th style="width: 8%;">Blood Group</th>' : ''}
+                  ${visibleFieldKeys.includes('photoUrl') ? '<th style="width: 10%;">Photo</th>' : ''}
                 </tr>
-                ${teachers.map(teacher => `
+              </thead>
+              <tbody>
+                ${teachers
+                  .map(
+                    (teacher) => `
                   <tr>
-                    ${visibleFieldKeys.includes('staffId') ? `<td>${teacher.staffId || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('nameBangla') ? `<td>${teacher.nameBangla || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('nameEnglish') ? `<td>${teacher.nameEnglish || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('subject') ? `<td>${teacher.subject || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('designation') ? `<td>${teacher.designation || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('joiningDate') ? `<td>${formatDateBD(teacher.joiningDate)}</td>` : ''}
-                    ${visibleFieldKeys.includes('nid') ? `<td>${teacher.nid || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('mobile') ? `<td>${teacher.mobile || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('salary') ? `<td>৳${teacher.salary || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('email') ? `<td>${teacher.email || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('address') ? `<td>${teacher.address || 'N/A'}</td>` : ''}
-                    ${visibleFieldKeys.includes('bloodGroup') ? `<td>${teacher.bloodGroup || 'N/A'}</td>` : ''}
+                    ${visibleFieldKeys.includes('staffId') ? `<td>${teacher.staffId || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('nameBangla') ? `<td>${teacher.nameBangla || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('nameEnglish') ? `<td>${teacher.nameEnglish || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('designation') ? `<td>${teacher.designation || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('joiningDate') ? `<td>${formatDateBD(teacher.joiningDate) || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('nid') ? `<td>${teacher.nid || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('mobile') ? `<td>${teacher.mobile || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('salary') ? `<td>৳${teacher.salary ? Number(teacher.salary).toFixed(2) : '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('email') ? `<td>${teacher.email || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('address') ? `<td>${teacher.address || '-'}</td>` : ''}
+                    ${visibleFieldKeys.includes('bloodGroup') ? `<td>${teacher.bloodGroup || '-'}</td>` : ''}
                     ${visibleFieldKeys.includes('photoUrl') ? `
                       <td>
                         ${teacher.photoUrl
-            ? `<img src="${teacher.photoUrl}" alt="${teacher.nameEnglish || teacher.nameBangla}'s photo" onerror="this.style.display='none';this.nextSibling.style.display='block'" /><span style="display:none">Image not available</span>`
-            : 'No photo'}
-                      </td>`
-          : ''}
+                          ? `<img src="${teacher.photoUrl}" alt="${teacher.nameEnglish || teacher.nameBangla || 'Staff'}'s photo" onerror="this.style.display='none';this.nextSibling.style.display='block'" /><span style="display:none">Image not available</span>`
+                          : 'No photo'}
+                      </td>` : ''}
                   </tr>
-                `).join('')}
-              </table>
-              <div class="footer">
-               Generated by MySchool Official Website • https://myschool-offical.netlify.app
-              </div>
+                `
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+            <div class="footer">
+              Generated by MySchool Official Website • https://myschool-offical.netlify.app
             </div>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
-    }
-  };
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  }
+};
 
   const canCloseModal = operationStatus === 'idle';
 

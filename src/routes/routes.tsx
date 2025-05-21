@@ -35,9 +35,8 @@ const AcademicRoutine = lazy(() => import("@/adminDasboard/academic/AcademicRout
 const TeachersPanel = lazy(() => import("@/adminDasboard/teachers/TeachersPanel"));
 const SmsService = lazy(() => import("@/adminDasboard/smsservcie/SmsService"));
 const ContentGanarator = lazy(() => import("@/adminDasboard/contentganarate/ContentGanarator"));
-const MySchoolChat = lazy(() => import("@/adminDasboard/myschool-chat/MySchoolChat"));
 const AssetsManegment = lazy(() => import("@/adminDasboard/assestManegment/AssetsManegment"));
-const Settings = lazy(() => import("@/adminDasboard/settings/Settings"));
+const Marketing = lazy(() => import("@/adminDasboard/marketing/Marketing"));
 
 // Lazy-loaded staff components
 const StaffDashboard = lazy(() => import("@/staffDashboard/StaffDashboard"));
@@ -74,14 +73,7 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route
-          path="routine"
-          element={
-            <Suspense fallback={<Loading />}>
-              <AcademicRoutine />
-            </Suspense>
-          }
-        />
+
         <Route
           path="submit-student-data"
           element={
@@ -177,22 +169,7 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route
-          path="settings"
-          element={
-            <Suspense fallback={<Loading />}>
-              <Settings />
-            </Suspense>
-          }
-        />
-        <Route
-          path="users-task-management"
-          element={
-            <Suspense fallback={<Loading />}>
-              <TodoList />
-            </Suspense>
-          }
-        />
+
         <Route
           path="accounts&fund"
           element={
@@ -206,6 +183,14 @@ const AppRoutes = () => {
           element={
             <Suspense fallback={<Loading />}>
               <AcademicRoutine />
+            </Suspense>
+          }
+        />
+        <Route
+          path="marketing"
+          element={
+            <Suspense fallback={<Loading />}>
+              <Marketing />
             </Suspense>
           }
         />
@@ -233,14 +218,7 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route
-          path="myschool-ai"
-          element={
-            <Suspense fallback={<Loading />}>
-              <MySchoolChat />
-            </Suspense>
-          }
-        />
+
       </Route>
 
       {/* Staff routes */}
