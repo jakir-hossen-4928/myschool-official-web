@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/button';
 import Loading from '@/components/loader/Loading';
 import { db } from '@/lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import LoginDevices from './LoginDevices';
+
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
@@ -277,8 +277,6 @@ const AdminOverview: React.FC = () => {
               </ScrollArea>
             </CardContent>
           </Card>
-
-          <LoginDevices />
         </div>
 
         <Card className="p-6">
