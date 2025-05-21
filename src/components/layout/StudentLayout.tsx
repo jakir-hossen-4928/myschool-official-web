@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -7,18 +7,21 @@ import {
   Menu,
   X,
   BookOpen,
-  Calendar,
-  Bell,
-  MessageSquare,
-  FileText,
   GraduationCap,
   ListTodo,
   BookCheck,
+  Laptop,
+  Shield,
 } from "lucide-react";
+import LoginDevices from '@/authentication/LoginDevices';
 
 // Centralized navigation links
 const navLinks = [
- 
+  {
+    path: "/student",
+    label: "Dashboard",
+    icon: <BookOpen size={18} />,
+  },
   {
     path: "/student/tasks",
     label: "My Tasks",
@@ -34,11 +37,16 @@ const navLinks = [
     label: "Routine",
     icon: <BookCheck size={18} />,
   },
-
+  {
+    path: "/student/devices",
+    label: "Login Devices",
+    icon: <Shield size={18} />,
+  },
 ];
 
 export const StudentLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
@@ -99,9 +107,8 @@ export const StudentLayout = () => {
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-800 to-blue-600 text-white shadow-lg transform transition-all duration-300 ease-in-out ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } md:relative md:w-64 md:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-800 to-blue-600 text-white shadow-lg transform transition-all duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } md:relative md:w-64 md:translate-x-0`}
       >
         <div className="p-4 md:p-6">
           <div className="flex items-center justify-between mb-4">
@@ -123,15 +130,18 @@ export const StudentLayout = () => {
 
           <nav className="space-y-1">
             {navLinks.map((link) => (
-              <a
+              <Link
                 key={link.path}
-                href={link.path}
-                className="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-700/80 transition-colors"
+                to={link.path}
+                className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${location.pathname === link.path
+                  ? "bg-blue-700/80"
+                  : "hover:bg-blue-700/80"
+                  }`}
                 onClick={() => setIsSidebarOpen(false)}
               >
                 {link.icon}
                 <span className="text-sm font-medium">{link.label}</span>
-              </a>
+              </Link>
             ))}
           </nav>
         </div>
@@ -148,9 +158,8 @@ export const StudentLayout = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col w-full md:w-auto">
         <header
-          className={`bg-white p-4 shadow-md flex items-center justify-between sticky top-0 z-30 transition-transform duration-300 ease-in-out ${
-            isHeaderVisible ? "translate-y-0" : "-translate-y-full"
-          }`}
+          className={`bg-white p-4 shadow-md flex items-center justify-between sticky top-0 z-30 transition-transform duration-300 ease-in-out ${isHeaderVisible ? "translate-y-0" : "-translate-y-full"
+            }`}
         >
           <div className="flex items-center gap-4">
             <button
@@ -189,6 +198,8 @@ export const StudentLayout = () => {
         <footer className="bg-white p-3 md:p-4 text-center text-xs md:text-sm text-gray-500 border-t">
           © {new Date().getFullYear()} MySchool. All rights reserved.
         </footer>
+
+
       </div>
     </div>
   );

@@ -7,45 +7,125 @@ import { Toaster } from '../../components/ui/sonner';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, Users, BookOpen, Wallet, AlertCircle, Clock, Coins, LineChart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import Loading from '../../components/loader/Loading';
+import Loading from '@/components/loader/Loading';
+import { db } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import LoginDevices from './LoginDevices';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
+interface TeacherStats {
+  subjectDistribution: { [key: string]: number };
+  totalSalary: number;
+  designationDistribution: { [key: string]: number };
+  totalStaff: number;
+}
 
 const AdminOverview: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [teacherStats, setTeacherStats] = useState<TeacherStats>({
+    subjectDistribution: {},
+    totalSalary: 0,
+    designationDistribution: {},
+    totalStaff: 0
+  });
 
   useEffect(() => {
-    loadStats();
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        await Promise.all([loadStats(), loadTeacherStats()]);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, []);
 
-  const loadStats = async (retries = 3, delay = 2000) => {
+  const loadStats = async () => {
     try {
-      setLoading(true);
       const response = await fetch(`${BACKEND_URL}/admin-overview`);
       if (!response.ok) throw new Error(`Failed to fetch admin overview: ${response.statusText}`);
       const { overview } = await response.json();
       setStats(overview || {});
-      toast.success('Admin dashboard updated');
     } catch (err) {
-      if (retries > 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return loadStats(retries - 1, delay);
-      }
       setError('Failed to load statistics');
       toast.error('Connection error. Please try again.');
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const loadTeacherStats = async () => {
+    try {
+      const staffRef = collection(db, 'staff');
+      const querySnapshot = await getDocs(staffRef);
+
+      const subjectDistribution: { [key: string]: number } = {};
+      const designationDistribution: { [key: string]: number } = {};
+      let totalSalary = 0;
+      let totalStaff = 0;
+
+      console.log('Total staff documents:', querySnapshot.size);
+
+      querySnapshot.forEach((doc) => {
+        const staffData = doc.data();
+        console.log('Staff data:', staffData);
+
+        // Count total staff
+        totalStaff++;
+
+        // Process subject distribution - only for academic staff
+        const isAcademicStaff = [
+          'Teacher',
+          'Assistant Teacher',
+          'Vice Principal',
+          'Principal'
+        ].includes(staffData.designation);
+
+        if (isAcademicStaff && staffData.subject) {
+          const subject = staffData.subject.trim();
+          if (subject) {
+            subjectDistribution[subject] = (subjectDistribution[subject] || 0) + 1;
+          }
+        }
+
+        // Process designation and salary
+        if (staffData.designation) {
+          designationDistribution[staffData.designation] = (designationDistribution[staffData.designation] || 0) + 1;
+        }
+        if (staffData.salary) {
+          totalSalary += Number(staffData.salary);
+        }
+      });
+
+      console.log('Final staff stats:', {
+        totalStaff,
+        subjectDistribution,
+        totalSalary,
+        designationDistribution
+      });
+
+      setTeacherStats({
+        subjectDistribution,
+        totalSalary,
+        designationDistribution,
+        totalStaff
+      });
+
+    } catch (err) {
+      console.error('Error loading staff stats:', err);
+      toast.error('Failed to load staff statistics');
     }
   };
 
   const chartColors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
 
   if (loading) {
-    return (
-     <Loading />
-    );
+    return <Loading />;
   }
 
   if (error) {
@@ -55,7 +135,7 @@ const AdminOverview: React.FC = () => {
           <AlertCircle className="h-12 w-12 text-red-600" />
         </div>
         <h2 className="text-2xl font-semibold text-gray-800">{error}</h2>
-        <Button onClick={loadStats} className="gap-2">
+        <Button onClick={() => loadStats()} className="gap-2">
           <Clock className="w-4 h-4" /> Retry
         </Button>
       </div>
@@ -68,9 +148,9 @@ const AdminOverview: React.FC = () => {
     value
   }));
 
-  const subjectDistributionData = Object.entries(stats?.teachers?.subjectDistribution || {}).map(([name, value]) => ({
+  const subjectDistributionData = Object.entries(teacherStats.subjectDistribution).map(([name, value]) => ({
     name,
-    value
+    value: value as number
   }));
 
   const financialData = [
@@ -91,8 +171,8 @@ const AdminOverview: React.FC = () => {
             percentage="12%"
           />
           <StatCard
-            title="Total Teachers"
-            value={stats?.teachers?.totalTeachers || 0}
+            title="Total Staff"
+            value={teacherStats.totalStaff || 0}
             icon={<BookOpen className="h-6 w-6" />}
             trend="stable"
           />
@@ -172,51 +252,59 @@ const AdminOverview: React.FC = () => {
           <Card className="p-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                <BookOpen className="h-5 w-5" /> Subject Distribution
+                <BookOpen className="h-5 w-5" /> Academic Subject Distribution
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-72 pr-4">
-                {subjectDistributionData.map((item, index) => (
-                  <div key={item.name} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: chartColors[index] }} />
-                      <span className="font-medium">{item.name}</span>
+                {Object.keys(teacherStats.subjectDistribution).length > 0 ? (
+                  subjectDistributionData.map((item, index) => (
+                    <div key={item.name} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: chartColors[index] }} />
+                        <span className="font-medium">{item.name}</span>
+                      </div>
+                      <Badge variant="outline" className="px-3 py-1">
+                        {item.value}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="px-3 py-1">
-                      {item.value}
-                    </Badge>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-gray-500">
+                    No academic subject distribution data available
                   </div>
-                ))}
+                )}
               </ScrollArea>
             </CardContent>
           </Card>
 
-          <Card className="p-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                <Coins className="h-5 w-5" /> Salary Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span>Total Monthly Salary</span>
-                <span className="font-semibold text-emerald-600">
-                  ৳{(stats?.teachers?.totalSalary || 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="space-y-2">
-                <h4 className="font-medium">Designation Distribution</h4>
-                {Object.entries(stats?.teachers?.designationDistribution || {}).map(([designation, count]) => (
-                  <div key={designation} className="flex items-center justify-between">
-                    <span className="text-gray-600">{designation}</span>
-                    <span className="font-medium">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <LoginDevices />
         </div>
+
+        <Card className="p-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Coins className="h-5 w-5" /> Salary Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span>Total Monthly Salary</span>
+              <span className="font-semibold text-emerald-600">
+                ৳{teacherStats.totalSalary.toFixed(2)}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <h4 className="font-medium">Designation Distribution</h4>
+              {Object.entries(teacherStats.designationDistribution).map(([designation, count]) => (
+                <div key={designation} className="flex items-center justify-between">
+                  <span className="text-gray-600">{designation}</span>
+                  <span className="font-medium">{count as number}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="p-6">
           <CardHeader>
@@ -232,7 +320,7 @@ const AdminOverview: React.FC = () => {
                   {Math.round(
                     ((stats.students.totalStudents - stats.students.incompleteProfiles) /
                       stats.students.totalStudents) *
-                      100
+                    100
                   ) || 0}%
                 </span>
               </div>

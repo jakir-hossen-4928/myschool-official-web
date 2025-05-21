@@ -28,20 +28,13 @@ const StudentDashboard: React.FC = () => {
   };
 
   return (
-    <motion.div 
+    <motion.div
       className="p-4 md:p-6 space-y-6"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      <motion.div variants={itemVariants}>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Student Dashboard</h1>
-            <p className="text-muted-foreground">Welcome to your personal student portal</p>
-          </div>
-        </div>
-      </motion.div>
+      
 
       {/* Student Info Card */}
       <StudentInfoCard />

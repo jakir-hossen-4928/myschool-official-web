@@ -5,9 +5,97 @@ import {
   sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, query, collection, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, query, collection, where, getDocs, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { User, StudentData, StaffData } from '../lib/types';
+import { v4 as uuidv4 } from 'uuid';
+import { isMobile, isTablet, isBrowser } from 'react-device-detect';
+
+// Helper functions for device info
+const getBrowserInfo = () => {
+    const userAgent = navigator.userAgent;
+    if (userAgent.includes('Chrome')) return 'Chrome';
+    if (userAgent.includes('Firefox')) return 'Firefox';
+    if (userAgent.includes('Safari')) return 'Safari';
+    if (userAgent.includes('Edge')) return 'Edge';
+    return 'Unknown';
+};
+
+const getOSInfo = () => {
+    const userAgent = navigator.userAgent;
+    if (userAgent.includes('Windows')) return 'Windows';
+    if (userAgent.includes('Mac')) return 'MacOS';
+    if (userAgent.includes('Linux')) return 'Linux';
+    if (userAgent.includes('Android')) return 'Android';
+    if (userAgent.includes('iOS')) return 'iOS';
+    return 'Unknown';
+};
+
+const createSession = async (userId: string) => {
+    try {
+        // Generate unique session ID
+        const sessionId = uuidv4();
+
+        // Get device information
+        const deviceType = isMobile ? 'Mobile' : isTablet ? 'Tablet' : isBrowser ? 'Desktop' : 'Unknown';
+        const browser = getBrowserInfo();
+        const os = getOSInfo();
+        const userAgent = navigator.userAgent;
+        const screenResolution = `${window.screen.width}x${window.screen.height}`;
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const language = navigator.language;
+
+        // Get IP and location using free API
+        const ipResponse = await fetch('https://api.ipify.org?format=json');
+        const { ip } = await ipResponse.json();
+
+        // Get location using free API
+        const locationResponse = await fetch(`https://ipapi.co/${ip}/json/`);
+        const locationData = await locationResponse.json();
+
+        // Create new session
+        const sessionData = {
+            userId,
+            deviceType,
+            browser,
+            os,
+            ip,
+            location: `${locationData.city || 'Unknown'}, ${locationData.country_name || 'Unknown'}`,
+            lastActive: serverTimestamp(),
+            isActive: true,
+            isCurrent: true,
+            createdAt: serverTimestamp(),
+            sessionId,
+            userAgent,
+            screenResolution,
+            timezone,
+            language
+        };
+
+        // Add session to Firestore
+        await addDoc(collection(db, 'sessions'), sessionData);
+
+        // Update other sessions to not current
+        const sessionsRef = collection(db, 'sessions');
+        const q = query(
+            sessionsRef,
+            where('userId', '==', userId),
+            where('isCurrent', '==', true)
+        );
+        const querySnapshot = await getDocs(q);
+
+        querySnapshot.forEach(async (doc) => {
+            if (doc.data().sessionId !== sessionId) {
+                await updateDoc(doc.ref, {
+                    isCurrent: false
+                });
+            }
+        });
+
+    } catch (error) {
+        console.error('Error creating session:', error);
+    }
+};
 
 export const register = async (
   email: string,
@@ -48,6 +136,9 @@ export const register = async (
       userData.staffData = additionalData.staffData;
     }
 
+    // Create initial session
+    await createSession(userId);
+
     console.log('Registered user:', userData);
     return userData;
   } catch (error: any) {
@@ -77,6 +168,10 @@ export const login = async (
       await firebaseSignOut(auth); // Sign out unverified user
       throw new Error('Your account is not verified. Please wait for admin approval.');
     }
+
+    // Create new session after successful login
+    await createSession(userCredential.user.uid);
+
     const user: User = {
       id: userCredential.user.uid,
       email: userCredential.user.email,
@@ -164,6 +259,23 @@ export const getCurrentUser = async (): Promise<User | null> => {
 
 export const logout = async (): Promise<void> => {
   try {
+    const user = auth.currentUser;
+    if (user) {
+      // Delete current session from Firestore
+      const sessionsRef = collection(db, 'sessions');
+      const q = query(
+        sessionsRef,
+        where('userId', '==', user.uid),
+        where('isCurrent', '==', true)
+      );
+      const querySnapshot = await getDocs(q);
+
+      // Delete current session
+      querySnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+    }
+
     await firebaseSignOut(auth);
     console.log('User logged out successfully');
   } catch (error: any) {

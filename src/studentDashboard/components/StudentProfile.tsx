@@ -15,8 +15,6 @@ const StudentProfile: React.FC = () => {
   const [studentData, setStudentData] = useState<StudentData>({
     studentId: '',
     name: '',
-    nameBangla: '',
-    nameEnglish: '',
     englishName: '',
     class: '',
     number: '',
@@ -45,8 +43,6 @@ const StudentProfile: React.FC = () => {
           setStudentData({
             studentId: fetchedStudentData.studentId || currentUser.id || '',
             name: fetchedStudentData.name || '',
-            nameBangla: fetchedStudentData.nameBangla || '',
-            nameEnglish: fetchedStudentData.nameEnglish || '',
             englishName: fetchedStudentData.englishName || '',
             class: fetchedStudentData.class || '',
             number: fetchedStudentData.number || '',
@@ -213,7 +209,7 @@ const StudentProfile: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium text-gray-700">
-                  Name
+                  Name (Bangla)
                 </Label>
                 <Input
                   id="name"
@@ -225,38 +221,15 @@ const StudentProfile: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nameBangla" className="text-sm font-medium text-gray-700">
-                  Name (Bangla)
-                </Label>
-                <Input
-                  id="nameBangla"
-                  value={studentData.nameBangla}
-                  onChange={(e) => setStudentData({ ...studentData, nameBangla: e.target.value })}
-                  disabled={isProcessing}
-                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nameEnglish" className="text-sm font-medium text-gray-700">
-                  Name (English)
-                </Label>
-                <Input
-                  id="nameEnglish"
-                  value={studentData.nameEnglish}
-                  onChange={(e) => setStudentData({ ...studentData, nameEnglish: e.target.value })}
-                  disabled={isProcessing}
-                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="englishName" className="text-sm font-medium text-gray-700">
-                  English Name
+                  Name (English)
                 </Label>
                 <Input
                   id="englishName"
                   value={studentData.englishName}
                   onChange={(e) => setStudentData({ ...studentData, englishName: e.target.value })}
                   disabled={isProcessing}
+                  required
                   className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
@@ -314,7 +287,7 @@ const StudentProfile: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="motherName" className="text-sm font-medium text-gray-700">
-                  Mother’s Name
+                  Mother's Name
                 </Label>
                 <Input
                   id="motherName"
@@ -326,7 +299,7 @@ const StudentProfile: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="fatherName" className="text-sm font-medium text-gray-700">
-                  Father’s Name
+                  Father's Name
                 </Label>
                 <Input
                   id="fatherName"

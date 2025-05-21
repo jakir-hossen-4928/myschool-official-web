@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -8,16 +8,20 @@ import {
   X,
   User,
   BookOpen,
-  Calendar,
-  Bell,
-  MessageSquare,
-  FileText,
   CheckSquare,
   BookCheck,
+  Smartphone,
+  Shield,
 } from "lucide-react";
+import LoginDevices from '@/authentication/LoginDevices';
 
 // Centralized navigation links
 const navLinks = [
+  {
+    path: "/staff",
+    label: "Dashboard",
+    icon: <BookOpen size={18} />,
+  },
   {
     path: "/staff/students",
     label: "Students",
@@ -38,12 +42,17 @@ const navLinks = [
     label: "Routine",
     icon: <BookCheck size={18} />,
   },
-
-
+ 
+  {
+    path: "/staff/devices",
+    label: "Login Devices",
+    icon: <Shield size={18} />,
+  },
 ];
 
 export const StaffLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
@@ -126,15 +135,18 @@ export const StaffLayout = () => {
 
           <nav className="space-y-1">
             {navLinks.map((link) => (
-              <a
+              <Link
                 key={link.path}
-                href={link.path}
-                className="flex items-center gap-2 p-2 rounded-lg hover:bg-green-700/80 transition-colors"
+                to={link.path}
+                className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${location.pathname === link.path
+                  ? "bg-green-700/80"
+                  : "hover:bg-green-700/80"
+                  }`}
                 onClick={() => setIsSidebarOpen(false)}
               >
                 {link.icon}
                 <span className="text-sm font-medium">{link.label}</span>
-              </a>
+              </Link>
             ))}
           </nav>
         </div>
@@ -191,6 +203,8 @@ export const StaffLayout = () => {
         <footer className="bg-white p-3 md:p-4 text-center text-xs md:text-sm text-gray-500 border-t">
           © {new Date().getFullYear()} MySchool. All rights reserved.
         </footer>
+
+
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,60 +8,33 @@ import { Edit, Mail, Phone } from "lucide-react";
 import { getCurrentUser } from '@/lib/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-
-interface User {
-  id: string;
-  name: string | null;
-  email: string | null;
-  role?: 'admin' | 'staff' | 'student';
-}
-
-interface StudentInfo {
-  id: string;
-  name: string;
-  class: string;
-  rollNumber: string;
-  section: string;
-  email: string;
-  phone: string;
-  parentName: string;
-  address: string;
-  photoUrl: string;
-  bloodGroup: string;
-}
+import { User, StudentData } from '@/lib/types';
 
 const StudentInfoCard = () => {
-  const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
+  const [studentInfo, setStudentInfo] = useState<StudentData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStudentInfo = async () => {
       try {
-        const user = await getCurrentUser() as User | null;
-        if (user) {
-          const studentDoc = await getDoc(doc(db, "students", user.id));
-          if (studentDoc.exists()) {
-            setStudentInfo({
-              id: user.id,
-              name: user.name || "",
-              ...studentDoc.data() as Omit<StudentInfo, 'id' | 'name'>
-            });
-          } else {
-            // Create a default student record if none exists
-            setStudentInfo({
-              id: user.id,
-              name: user.name || "",
-              class: "Not set",
-              rollNumber: "Not set",
-              section: "Not set",
-              email: user.email || "",
-              phone: "Not set",
-              parentName: "Not set",
-              address: "Not set",
-              photoUrl: "",
-              bloodGroup: "Not set"
-            });
-          }
+        const user = await getCurrentUser();
+        if (user && user.role === 'student' && user.studentData) {
+          setStudentInfo(user.studentData);
+        } else {
+          // Create a default student record if none exists
+          setStudentInfo({
+            studentId: user?.id || '',
+            name: '',
+            englishName: '',
+            class: '',
+            number: '',
+            email: user?.email || '',
+            motherName: '',
+            fatherName: '',
+            bloodGroup: '',
+            photoUrl: '',
+            description: ''
+          });
         }
         setLoading(false);
       } catch (error) {
@@ -76,8 +48,8 @@ const StudentInfoCard = () => {
 
   const cardVariants = {
     hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
+    visible: {
+      opacity: 1,
       y: 0,
       transition: { duration: 0.5 }
     }
@@ -123,24 +95,10 @@ const StudentInfoCard = () => {
         <CardHeader className="pb-4 bg-gradient-to-r from-blue-600 to-purple-600">
           <CardTitle className="text-white flex justify-between items-center">
             <span>Student Profile</span>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
-                  <Edit className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Edit Profile Information</DialogTitle>
-                </DialogHeader>
-                <div className="py-4">
-                  <p className="text-gray-500">Edit profile functionality will be implemented here</p>
-                </div>
-              </DialogContent>
-            </Dialog>
+
           </CardTitle>
           <CardDescription className="text-blue-100">
-            Student ID: {studentInfo.id.substring(0, 8)}
+            Student ID: {studentInfo.studentId.substring(0, 8)}...
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -153,43 +111,42 @@ const StudentInfoCard = () => {
                 </AvatarFallback>
               </Avatar>
               <h3 className="font-semibold text-xl text-center">{studentInfo.name}</h3>
+              <p className="text-sm text-gray-500">{studentInfo.englishName}</p>
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <Mail className="h-4 w-4" />
                 <span>{studentInfo.email}</span>
               </div>
-              {studentInfo.phone && (
+              {studentInfo.number && (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Phone className="h-4 w-4" />
-                  <span>{studentInfo.phone}</span>
+                  <span>{studentInfo.number}</span>
                 </div>
               )}
             </div>
-            
+
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <h4 className="text-sm font-medium text-gray-500">Class</h4>
                 <p className="text-base">{studentInfo.class}</p>
               </div>
               <div>
-                <h4 className="text-sm font-medium text-gray-500">Section</h4>
-                <p className="text-base">{studentInfo.section}</p>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500">Roll Number</h4>
-                <p className="text-base">{studentInfo.rollNumber}</p>
-              </div>
-              <div>
                 <h4 className="text-sm font-medium text-gray-500">Blood Group</h4>
                 <p className="text-base">{studentInfo.bloodGroup}</p>
               </div>
               <div>
-                <h4 className="text-sm font-medium text-gray-500">Parent's Name</h4>
-                <p className="text-base">{studentInfo.parentName}</p>
+                <h4 className="text-sm font-medium text-gray-500">Mother's Name</h4>
+                <p className="text-base">{studentInfo.motherName}</p>
               </div>
               <div>
-                <h4 className="text-sm font-medium text-gray-500">Address</h4>
-                <p className="text-base">{studentInfo.address}</p>
+                <h4 className="text-sm font-medium text-gray-500">Father's Name</h4>
+                <p className="text-base">{studentInfo.fatherName}</p>
               </div>
+              {studentInfo.description && (
+                <div className="col-span-2">
+                  <h4 className="text-sm font-medium text-gray-500">Description</h4>
+                  <p className="text-base">{studentInfo.description}</p>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

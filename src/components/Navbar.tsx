@@ -11,7 +11,7 @@ const baseNavRoutes = [
   { label: "Home", path: "/" },
   { label: "Submit Data", path: "/submit-student-data" },
   { label: "Assets", path: "/assets" },
-  { label: "Routine", path: "/routine" },
+ 
 ];
 
 const Navbar = () => {

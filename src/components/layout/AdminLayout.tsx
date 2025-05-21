@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '@/lib/auth';
@@ -10,7 +9,9 @@ import {
   Bot,
   ListTodo,
   SettingsIcon, Briefcase,
-  Target
+  Target,
+  Laptop,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,7 +33,9 @@ export const AdminLayout = () => {
     { path: '/admin/sms-service', label: 'SMS Service', icon: <MessageSquare className="h-5 w-5" /> },
     { path: '/admin/myschool-suite', label: 'Content Generator', icon: <Calendar className="h-5 w-5" /> },
     { path: '/admin/marketing', label: 'Marketing Leads', icon: <Target className="h-5 w-5" /> },
-    ];
+    
+    { path: '/admin/devices', label: 'Login Devices', icon: <Shield size={18} /> },
+  ];
 
   const handleLogout = async () => {
     try {
