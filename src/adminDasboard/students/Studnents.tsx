@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Trash, Edit, Download, X, Settings, User } from 'lucide-react';
+import { Plus, Trash, Edit, Download, X, Settings, User, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast'; // Import useToast hook
 import axios from 'axios';
@@ -52,6 +52,69 @@ const CLASS_OPTIONS = [
   "নার্সারি", "প্লে", "প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ", "পঞ্চম", "ষষ্ঠ"
 ];
 
+// Add debounce utility
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
+// Add UTM utility functions
+const levenshteinDistance = (str1: string, str2: string): number => {
+  const m = str1.length;
+  const n = str2.length;
+  const dp: number[][] = Array(m + 1).fill(0).map(() => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(
+          dp[i - 1][j - 1] + 1, // substitution
+          dp[i - 1][j] + 1,     // deletion
+          dp[i][j - 1] + 1      // insertion
+        );
+      }
+    }
+  }
+  return dp[m][n];
+};
+
+const getSimilarityScore = (str1: string, str2: string): number => {
+  const distance = levenshteinDistance(str1.toLowerCase(), str2.toLowerCase());
+  const maxLength = Math.max(str1.length, str2.length);
+  return 1 - distance / maxLength;
+};
+
+const fuzzySearch = (query: string, text: string): boolean => {
+  if (!query.trim()) return true;
+
+  const searchTerms = query.toLowerCase().trim().split(/\s+/);
+  const textLower = text.toLowerCase();
+
+  // Check for exact matches first
+  if (textLower.includes(query.toLowerCase())) return true;
+
+  // Check for partial matches
+  return searchTerms.some(term => {
+    // Direct substring match
+    if (textLower.includes(term)) return true;
+
+    // Fuzzy match with similarity threshold
+    const words = textLower.split(/\s+/);
+    return words.some(word => getSimilarityScore(term, word) > 0.7);
+  });
+};
+
 const Students = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
@@ -75,14 +138,65 @@ const Students = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [operationStatus, setOperationStatus] = useState<'idle' | 'uploading'>('idle');
   const itemsPerPage = 30;
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<'all' | 'name' | 'number' | 'class'>('all');
+  const [searchResults, setSearchResults] = useState<Student[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const { toast } = useToast(); // Use the toast hook
 
-  // Memoized filtered students
+  // Memoized search function with UTM
+  const searchStudents = useCallback((query: string, field: string, students: Student[]): Student[] => {
+    if (!query.trim()) return students;
+
+    const searchResults = students.filter(student => {
+      switch (field) {
+        case 'name':
+          return fuzzySearch(query, student.name) ||
+            fuzzySearch(query, student.englishName);
+        case 'number':
+          return fuzzySearch(query, student.number);
+        case 'class':
+          return fuzzySearch(query, student.class);
+        case 'all':
+        default:
+          return (
+            fuzzySearch(query, student.name) ||
+            fuzzySearch(query, student.englishName) ||
+            fuzzySearch(query, student.number) ||
+            fuzzySearch(query, student.class) ||
+            fuzzySearch(query, student.fatherName) ||
+            fuzzySearch(query, student.motherName)
+          );
+      }
+    });
+
+    return searchResults;
+  }, []);
+
+  // Debounced search handler with loading state
+  const debouncedSearch = useMemo(
+    () => debounce((query: string) => {
+      setIsSearching(true);
+      setSearchQuery(query);
+      const results = searchStudents(query, searchField, students);
+      setSearchResults(results);
+      setIsSearching(false);
+    }, 300),
+    [searchStudents, searchField, students]
+  );
+
+  // Memoized filtered students with search
   const filteredStudents = useMemo(() => {
-    if (!selectedClass) return students;
-    return students.filter(student => student.class === selectedClass);
-  }, [students, selectedClass]);
+    let filtered = searchQuery ? searchResults : students;
+
+    // Apply class filter
+    if (selectedClass) {
+      filtered = filtered.filter(student => student.class === selectedClass);
+    }
+
+    return filtered;
+  }, [students, selectedClass, searchQuery, searchResults]);
 
   // Memoized paginated students
   const paginatedStudents = useMemo(() => {
@@ -399,6 +513,60 @@ const Students = () => {
           </div>
         </header>
 
+        {/* Enhanced Search Bar */}
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search students... (fuzzy search enabled)"
+              onChange={(e) => debouncedSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2
+                focus:ring-blue-500 focus:border-transparent"
+            />
+            {isSearching && (
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              </div>
+            )}
+          </div>
+          <select
+            value={searchField}
+            onChange={(e) => {
+              setSearchField(e.target.value as any);
+              if (searchQuery) {
+                debouncedSearch(searchQuery);
+              }
+            }}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2
+              focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">All Fields</option>
+            <option value="name">Name</option>
+            <option value="number">Number</option>
+            <option value="class">Class</option>
+          </select>
+        </div>
+
+        {/* Search Results Info */}
+        {searchQuery && (
+          <div className="text-sm text-gray-600">
+            {searchResults.length > 0 ? (
+              <span>
+                Found {searchResults.length} results for "{searchQuery}"
+                {searchField !== 'all' && ` in ${searchField}`}
+              </span>
+            ) : (
+              <span className="text-red-500">
+                No results found for "{searchQuery}"
+                {searchField !== 'all' && ` in ${searchField}`}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Class Filter Chips */}
         <div className="flex flex-wrap gap-2">
           {CLASS_OPTIONS.map(cls => (
@@ -437,8 +605,8 @@ const Students = () => {
                   </div>
                 </motion.div>
               ))
-            ) : students.length > 0 ? (
-              students.map(student => (
+            ) : filteredStudents.length > 0 ? (
+              filteredStudents.map(student => (
                 <motion.div
                   key={student.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -550,7 +718,18 @@ const Students = () => {
               ))
             ) : (
               <div className="col-span-full text-center py-12">
-                <div className="text-gray-500 text-lg">No students found</div>
+                <div className="text-gray-500 text-lg">
+                  {searchQuery ? (
+                    <div className="space-y-2">
+                      <p>No students found matching your search criteria</p>
+                      <p className="text-sm text-gray-400">
+                        Try adjusting your search terms or filters
+                      </p>
+                    </div>
+                  ) : (
+                    "No students found"
+                  )}
+                </div>
               </div>
             )}
           </AnimatePresence>
