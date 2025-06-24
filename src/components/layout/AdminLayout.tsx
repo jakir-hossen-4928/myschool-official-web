@@ -11,7 +11,11 @@ import {
   SettingsIcon, Briefcase,
   Target,
   Laptop,
-  Shield
+  Shield,
+  ChevronDown,
+  UserCheck,
+  FileText,
+  BarChart3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,21 +25,88 @@ export const AdminLayout = () => {
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
 
-  const menuItems = [
-    { path: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { path: '/admin/student-management', label: 'Students', icon: <Users className="h-5 w-5" /> },
-    { path: '/admin/users-management', label: 'Users', icon: <Users className="h-5 w-5" /> },
-    { path: '/admin/staff', label: 'Staff', icon: <School className="h-5 w-5" /> },
-    { path: '/admin/accounts&fund', label: 'Accounts', icon: <DollarSign className="h-5 w-5" /> },
-    { path: '/admin/academic', label: 'Academic', icon: <BookOpen className="h-5 w-5" /> },
-    { path: '/admin/assets-management', label: 'Assets', icon: <Briefcase className="h-5 w-5" /> },
-    { path: '/admin/sms-service', label: 'SMS Service', icon: <MessageSquare className="h-5 w-5" /> },
-    { path: '/admin/myschool-suite', label: 'Content Generator', icon: <Calendar className="h-5 w-5" /> },
-    { path: '/admin/marketing', label: 'Marketing Leads', icon: <Target className="h-5 w-5" /> },
-    
-    { path: '/admin/devices', label: 'Login Devices', icon: <Shield size={18} /> },
+  // Organized navigation with sub-menus
+  const navigationItems = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: <LayoutDashboard className="h-5 w-5" />,
+      path: '/admin',
+      type: 'single'
+    },
+    {
+      id: 'student-management',
+      label: 'Student Management',
+      icon: <Users className="h-5 w-5" />,
+      type: 'group',
+      items: [
+        { path: '/admin/student-management', label: 'Student Profiles', icon: <FileText className="h-4 w-4" /> },
+        { path: '/admin/users-management', label: 'User Verification', icon: <UserCheck className="h-4 w-4" /> },
+      ]
+    },
+    {
+      id: 'academic',
+      label: 'Academic',
+      icon: <BookOpen className="h-5 w-5" />,
+      type: 'group',
+      items: [
+        { path: '/admin/academic', label: 'Class Routine', icon: <Calendar className="h-4 w-4" /> },
+        { path: '/admin/staff', label: 'Staff Management', icon: <School className="h-4 w-4" /> },
+        { path: '/admin/exam-management', label: 'Exam Management', icon: <FileText className="h-4 w-4" /> },
+        { path: '/admin/school-result', label: 'School Result', icon: <BarChart3 className="h-4 w-4" /> },
+      ]
+    },
+    {
+      id: 'finance',
+      label: 'Finance & Accounts',
+      icon: <DollarSign className="h-5 w-5" />,
+      type: 'group',
+      items: [
+        { path: '/admin/fee-collection', label: 'Fee Collection', icon: <BarChart3 className="h-4 w-4" /> },
+        { path: '/admin/fee-settings', label: 'Fee Settings', icon: <SettingsIcon className="h-4 w-4" /> },
+        { path: '/admin/custom-student-fees', label: 'Custom Student Fees', icon: <ListTodo className="h-4 w-4" /> },
+        { path: '/admin/fund-tracker', label: 'Fund Tracker', icon: <Briefcase className="h-4 w-4" /> },
+        { path: '/admin/fee-management-tour', label: 'Fee Guide', icon: <ListTodo className="h-4 w-4" /> },
+      ]
+    },
+    {
+      id: 'operations',
+      label: 'Operations',
+      icon: <Settings className="h-5 w-5" />,
+      type: 'group',
+      items: [
+        { path: '/admin/assets-management', label: 'Assets Management', icon: <Briefcase className="h-4 w-4" /> },
+        { path: '/admin/sms-service', label: 'SMS Service', icon: <MessageSquare className="h-4 w-4" /> },
+        { path: '/admin/myschool-suite', label: 'Content Generator', icon: <Bot className="h-4 w-4" /> },
+        { path: '/admin/marketing', label: 'Marketing Leads', icon: <Target className="h-4 w-4" /> },
+        { path: '/admin/devices', label: 'Login Devices', icon: <Shield className="h-4 w-4" /> },
+      ]
+    }
   ];
+
+  const toggleMenu = (menuId: string) => {
+    setExpandedMenus(prev =>
+      prev.includes(menuId)
+        ? prev.filter(id => id !== menuId)
+        : [...prev, menuId]
+    );
+  };
+
+  const isMenuExpanded = (menuId: string) => expandedMenus.includes(menuId);
+
+  const isActivePath = (path: string) => location.pathname === path;
+
+  const isActiveMenu = (menu: any) => {
+    if (menu.type === 'single') {
+      return isActivePath(menu.path);
+    }
+    if (menu.type === 'group') {
+      return menu.items.some((item: any) => isActivePath(item.path));
+    }
+    return false;
+  };
 
   const handleLogout = async () => {
     try {
@@ -62,7 +133,100 @@ export const AdminLayout = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
-  return (<div className="flex h-screen bg-gray-100">
+  const renderMenuItem = (item: any) => {
+    if (item.type === 'single') {
+      return (
+        <li key={item.id}>
+          <Link
+            to={item.path}
+            className={cn(
+              "flex items-center space-x-3 px-4 py-3 rounded-md transition-colors duration-200",
+              isActivePath(item.path)
+                ? "bg-white/20 text-white font-medium"
+                : "text-white/80 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+            {isActivePath(item.path) && (
+              <ChevronRight className="h-4 w-4 ml-auto" />
+            )}
+          </Link>
+        </li>
+      );
+    }
+
+    if (item.type === 'group') {
+      const isExpanded = isMenuExpanded(item.id);
+      const isActive = isActiveMenu(item);
+
+      return (
+        <li key={item.id}>
+          <button
+            onClick={() => toggleMenu(item.id)}
+            className={cn(
+              "flex items-center justify-between w-full px-4 py-3 rounded-md transition-colors duration-200",
+              isActive
+                ? "bg-white/20 text-white font-medium"
+                : "text-white/80 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            <div className="flex items-center space-x-3">
+              {item.icon}
+              <span>{item.label}</span>
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 transition-transform duration-200",
+                isExpanded ? "rotate-180" : ""
+              )}
+            />
+          </button>
+
+          {isExpanded && (
+            <ul className="mt-1 ml-6 space-y-1">
+              {item.items.map((subItem: any) => (
+                <li key={subItem.path}>
+                  <Link
+                    to={subItem.path}
+                    className={cn(
+                      "flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm",
+                      isActivePath(subItem.path)
+                        ? "bg-white/20 text-white font-medium"
+                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                    )}
+                  >
+                    {subItem.icon}
+                    <span>{subItem.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      );
+    }
+
+    return null;
+  };
+
+  const getCurrentPageTitle = () => {
+    for (const item of navigationItems) {
+      if (item.type === 'single' && isActivePath(item.path)) {
+        return item.label;
+      }
+      if (item.type === 'group') {
+        const activeSubItem = item.items.find((subItem: any) => isActivePath(subItem.path));
+        if (activeSubItem) {
+          return activeSubItem.label;
+        }
+      }
+    }
+    return 'Admin Panel';
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
     {/* Desktop Sidebar */}
     <aside
       className={cn(
@@ -88,25 +252,7 @@ export const AdminLayout = () => {
 
         <nav className="flex-1 py-4 overflow-y-auto">
           <ul className="space-y-1 px-2">
-            {menuItems.map((item) => (
-              <li key={item.path}>
-                <Link
-                  to={item.path}
-                  className={cn(
-                    "flex items-center space-x-3 px-4 py-3 rounded-md transition-colors duration-200",
-                    location.pathname === item.path
-                      ? "bg-white/20 text-white font-medium"
-                      : "text-white/80 hover:bg-white/10 hover:text-white"
-                  )}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                  {location.pathname === item.path && (
-                    <ChevronRight className="h-4 w-4 ml-auto" />
-                  )}
-                </Link>
-              </li>
-            ))}
+              {navigationItems.map(renderMenuItem)}
           </ul>
         </nav>
 
@@ -146,7 +292,7 @@ export const AdminLayout = () => {
               <Menu className="h-6 w-6" />
             </Button>
             <h1 className="text-xl font-semibold text-gray-800 ml-2">
-              {menuItems.find(item => item.path === location.pathname)?.label || 'Admin Panel'}
+                {getCurrentPageTitle()}
             </h1>
           </div>
 
@@ -185,15 +331,17 @@ export const AdminLayout = () => {
               </Button>
             </div>
 
-            <nav className="py-4">
+              <nav className="py-4 overflow-y-auto">
               <ul className="space-y-1 px-2">
-                {menuItems.map((item) => (
-                  <li key={item.path}>
+                  {navigationItems.map((item) => {
+                    if (item.type === 'single') {
+                      return (
+                        <li key={item.id}>
                     <Link
                       to={item.path}
                       className={cn(
                         "flex items-center space-x-3 px-4 py-3 rounded-md transition-colors duration-200",
-                        location.pathname === item.path
+                              isActivePath(item.path)
                           ? "bg-white/20 text-white font-medium"
                           : "text-white/80 hover:bg-white/10 hover:text-white"
                       )}
@@ -201,9 +349,65 @@ export const AdminLayout = () => {
                     >
                       {item.icon}
                       <span>{item.label}</span>
+                          </Link>
+                        </li>
+                      );
+                    }
+
+                    if (item.type === 'group') {
+                      const isExpanded = isMenuExpanded(item.id);
+                      const isActive = isActiveMenu(item);
+
+                      return (
+                        <li key={item.id}>
+                          <button
+                            onClick={() => toggleMenu(item.id)}
+                            className={cn(
+                              "flex items-center justify-between w-full px-4 py-3 rounded-md transition-colors duration-200",
+                              isActive
+                                ? "bg-white/20 text-white font-medium"
+                                : "text-white/80 hover:bg-white/10 hover:text-white"
+                            )}
+                          >
+                            <div className="flex items-center space-x-3">
+                              {item.icon}
+                              <span>{item.label}</span>
+                            </div>
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 transition-transform duration-200",
+                                isExpanded ? "rotate-180" : ""
+                              )}
+                            />
+                          </button>
+
+                          {isExpanded && (
+                            <ul className="mt-1 ml-6 space-y-1">
+                              {item.items.map((subItem: any) => (
+                                <li key={subItem.path}>
+                                  <Link
+                                    to={subItem.path}
+                                    className={cn(
+                                      "flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm",
+                                      isActivePath(subItem.path)
+                                        ? "bg-white/20 text-white font-medium"
+                                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                                    )}
+                                    onClick={toggleMobileMenu}
+                                  >
+                                    {subItem.icon}
+                                    <span>{subItem.label}</span>
                     </Link>
                   </li>
                 ))}
+                            </ul>
+                          )}
+                        </li>
+                      );
+                    }
+
+                    return null;
+                  })}
               </ul>
             </nav>
 
