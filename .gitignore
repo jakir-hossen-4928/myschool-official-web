@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .env
+.env
 
 # Editor directories and files
 .vscode/*
@@ -26,4 +27,4 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
-"firebase-service-account.json" 
+"firebase-service-account.json"
