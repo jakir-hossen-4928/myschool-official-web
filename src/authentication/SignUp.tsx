@@ -216,7 +216,6 @@ const SignUp = () => {
       if (motherName) validateField('motherName', motherName, studentSchema.shape.motherName);
       if (fatherName) validateField('fatherName', fatherName, studentSchema.shape.fatherName);
       if (studentBloodGroup) validateField('bloodGroup', studentBloodGroup, studentSchema.shape.bloodGroup);
-      // if (description) validateField('description', description, studentSchema.shape.description);
     } else if (role === 'staff') {
       if (nameBangla) validateField('nameBangla', nameBangla, staffSchema.shape.nameBangla);
       if (nameEnglish) validateField('nameEnglish', nameEnglish, staffSchema.shape.nameEnglish);
@@ -228,7 +227,6 @@ const SignUp = () => {
       if (staffBloodGroup) validateField('bloodGroup', staffBloodGroup, staffSchema.shape.bloodGroup);
       if (subject) validateField('subject', subject, staffSchema.shape.subject);
       if (salary !== '') validateField('salary', Number(salary), staffSchema.shape.salary);
-      // if (workingDays !== '') validateField('workingDays', Number(workingDays), staffSchema.shape.workingDays);
     }
   }, [
     email, password, confirmPassword, role, photoUrl,
@@ -236,9 +234,13 @@ const SignUp = () => {
     nameBangla, nameEnglish, designation, joiningDate, nid, mobile, address, staffBloodGroup, salary, subject
   ]);
 
-  const uploadImageToImgBB = async (file: File): Promise<string> => {
-    const IMAGE_HOST_KEY = import.meta.env.VITE_IMGBB_API_KEY;
-    if (!IMAGE_HOST_KEY) throw new Error('ImgBB API key not configured');
+  const uploadImageTo = async (file: File): Promise<string> => {
+    // const IMAGE_HOST_KEY = import.meta.env.VITE_IMGBB_API_KEY;
+    const IMAGE_HOST_KEY = '8214c397d8d128581e7bb4f84f230a86';
+    if (!IMAGE_HOST_KEY) {
+      toast({ variant: "destructive", title: "Error", description: "ImgBB API key not configured" });
+      throw new Error('ImgBB API key not configured');
+    }
 
     const formData = new FormData();
     formData.append('image', file);
@@ -249,7 +251,10 @@ const SignUp = () => {
         method: 'POST',
         body: formData,
       });
-      if (!response.ok) throw new Error('Error uploading image to ImgBB');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Error uploading image to ImgBB');
+      }
       const data = await response.json();
       return data.data.url;
     } catch (error) {
@@ -276,7 +281,7 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
-      const uploadedUrl = await uploadImageToImgBB(file);
+      const uploadedUrl = await uploadImageTo(file); // Fixed: Changed uploadImageToImgBB to uploadImageTo
       setPhotoUrl(uploadedUrl);
       toast({ title: "Success", description: "Image uploaded successfully" });
     } catch (error: any) {
@@ -600,17 +605,6 @@ const SignUp = () => {
                   />
                   {errors.motherName && <p className="text-sm text-red-500">{errors.motherName}</p>}
                 </div>
-                {/* <div className="space-y-2">
-                  <Label htmlFor="description">Description *</Label>
-                  <Input
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                  {errors.description && <p className="text-sm text-red-500">{errors.description}</p>}
-                </div> */}
               </>
             ) : (
               <>
@@ -730,18 +724,6 @@ const SignUp = () => {
                     />
                     {errors.salary && <p className="text-sm text-red-500">{errors.salary}</p>}
                   </div>
-                  {/* <div className="space-y-2">
-                    <Label htmlFor="workingDays">Working Days *</Label>
-                    <Input
-                      id="workingDays"
-                      type="number"
-                      value={workingDays}
-                      onChange={(e) => setWorkingDays(e.target.value === '' ? '' : Number(e.target.value))}
-                      required
-                      disabled={isLoading}
-                    />
-                    {errors.workingDays && <p className="text-sm text-red-500">{errors.workingDays}</p>}
-                  </div> */}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bloodGroup">Blood Group *</Label>

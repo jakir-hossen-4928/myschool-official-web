@@ -3,14 +3,16 @@ import { Plus, Trash, Edit, Download, X, Settings, User, Search } from 'lucide-r
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
 import classesData from '@/lib/classes.json';
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
-console.log('Backend URL:', BACKEND_URL);
+console.log('Firebase Firestore initialized');
 
 // Updated interface to match server API structure
 interface Student {
   id: string;
+  studentId: string;
   name: string;
   number: string; // Phone number
   class: string;
@@ -38,18 +40,6 @@ const ACADEMIC_YEAR_OPTIONS = [
   "2025", "2026", "2027", "2028", "2029", "2030"
 ];
 
-// Performance optimization: Debounce utility
-const debounce = <T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): ((...args: Parameters<T>) => void) => {
-  let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-};
-
 // Performance optimization: Memoized search function
 const useSearchStudents = (students: Student[], searchQuery: string, searchField: string) => {
   return useMemo(() => {
@@ -58,9 +48,11 @@ const useSearchStudents = (students: Student[], searchQuery: string, searchField
     const searchLower = searchQuery.toLowerCase();
     return students.filter(student => {
       switch (searchField) {
+        case 'studentId':
+          return student.studentId.toLowerCase().includes(searchLower);
         case 'name':
           return student.name.toLowerCase().includes(searchLower) ||
-                 student.englishName.toLowerCase().includes(searchLower);
+            student.englishName.toLowerCase().includes(searchLower);
         case 'number':
           return student.number.toLowerCase().includes(searchLower);
         case 'class':
@@ -68,6 +60,7 @@ const useSearchStudents = (students: Student[], searchQuery: string, searchField
         case 'all':
         default:
           return (
+            student.studentId.toLowerCase().includes(searchLower) ||
             student.name.toLowerCase().includes(searchLower) ||
             student.englishName.toLowerCase().includes(searchLower) ||
             student.number.toLowerCase().includes(searchLower) ||
@@ -87,12 +80,10 @@ const Students = () => {
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalStudents, setTotalStudents] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchField, setSearchField] = useState<'all' | 'name' | 'number' | 'class'>('all');
-  const [isSearching, setIsSearching] = useState(false);
+  const [searchField, setSearchField] = useState<'all' | 'name' | 'number' | 'class' | 'studentId'>('all');
 
   const { toast } = useToast();
 
@@ -105,60 +96,51 @@ const Students = () => {
     return filteredStudents.filter(student => student.class === selectedClass);
   }, [filteredStudents, selectedClass]);
 
-  // Fetch students from server with performance optimization
+  // Performance optimization: Memoized paginated students
+  const paginatedStudents = useMemo(() => {
+    const pageSize = 30;
+    const startIndex = currentPage * pageSize;
+    return classFilteredStudents.slice(startIndex, startIndex + pageSize);
+  }, [classFilteredStudents, currentPage]);
+
+  // Performance optimization: Memoized display total
+  const displayTotal = classFilteredStudents.length;
+
+  // Fetch students from Firestore with optional queries
   const fetchStudents = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: any = {
-          page: currentPage,
-      };
+      let q = query(collection(db, 'students'));
 
-      // Add search by number if provided
-      if (searchQuery && searchField === 'number') {
-        params.number = searchQuery;
-      }
-
-      // Add class filter if selected
+      // Apply class filter query if selected
       if (selectedClass) {
-        params.class = selectedClass;
+        q = query(q, where('class', '==', selectedClass));
       }
 
-      const response = await axios.get(`${BACKEND_URL}/students`, { params });
-      
-      if (response.data && response.data.students) {
-      setStudents(response.data.students);
-        setTotalStudents(response.data.total || response.data.students.length);
-      } else {
-        setStudents([]);
-        setTotalStudents(0);
+      // Apply exact match for studentId or number if searching by those fields
+      if (searchQuery && (searchField === 'studentId' || searchField === 'number')) {
+        const field = searchField === 'studentId' ? 'studentId' : 'number';
+        q = query(q, where(field, '==', searchQuery));
       }
+
+      const snapshot = await getDocs(q);
+      const allStudents: Student[] = snapshot.docs.map((docSnapshot) => ({
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      })) as Student[];
+      setStudents(allStudents);
     } catch (error: any) {
       console.error('Error fetching students:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.response?.data?.error || "Failed to fetch students",
+        description: error.message || "Failed to fetch students",
       });
       setStudents([]);
-      setTotalStudents(0);
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, searchQuery, searchField, selectedClass, toast]);
-
-  // Performance optimization: Debounced search handler
-  const debouncedSearch = useMemo(
-    () => debounce((query: string) => {
-      setIsSearching(true);
-      setSearchQuery(query);
-      if (searchField === 'number') {
-        // For number search, fetch from server
-        fetchStudents();
-      }
-      setIsSearching(false);
-    }, 300),
-    [searchField, fetchStudents]
-  );
+  }, [toast, selectedClass, searchQuery, searchField]);
 
   // Upload image to ImgBB with proper error handling
   const uploadImageToImgBB = async (file: File): Promise<string> => {
@@ -168,13 +150,13 @@ const Students = () => {
     try {
       const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
         params: {
-          key: import.meta.env.VITE_IMGBB_API_KEY || 'YOUR_IMGBB_API_KEY', // Add to your .env file
+          key: import.meta.env.VITE_IMGBB_API_KEY || '8214c397d8d128581e7bb4f84f230a86', // Add to your .env file
         },
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      
+
       if (response.data && response.data.data && response.data.data.url) {
         return response.data.data.url;
       } else {
@@ -234,40 +216,37 @@ const Students = () => {
 
   // Handle save student with performance optimization
   const handleSave = async () => {
-    if (!editStudent?.name || !editStudent?.class) {
+    if (!editStudent?.name || !editStudent?.class || !editStudent?.studentId) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Name and Class are required",
+        description: "Name, Student ID and Class are required",
       });
       return;
     }
 
     try {
       setIsLoading(true);
-      
-      // Remove id field for new students (server generates it)
+
       const studentData = { ...editStudent };
-      if (!studentData.id) {
-        delete studentData.id;
-      }
-      
+
       if (editStudent.id) {
         // Update existing student
-        await axios.put(`${BACKEND_URL}/students/${editStudent.id}`, studentData);
+        await updateDoc(doc(db, 'students', editStudent.id), studentData);
         toast({
           title: "Success",
           description: "Student updated successfully",
         });
       } else {
         // Add new student
-        await axios.post(`${BACKEND_URL}/students`, studentData);
+        delete studentData.id;
+        await addDoc(collection(db, 'students'), studentData);
         toast({
           title: "Success",
           description: "Student added successfully",
         });
       }
-      
+
       setShowModal(false);
       setEditStudent(null);
       fetchStudents();
@@ -275,7 +254,7 @@ const Students = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.response?.data?.error || "Failed to save student",
+        description: error.message || "Failed to save student",
       });
     } finally {
       setIsLoading(false);
@@ -286,7 +265,7 @@ const Students = () => {
   const handleDelete = async (studentId: string) => {
     try {
       setIsLoading(true);
-      await axios.delete(`${BACKEND_URL}/students/${studentId}`);
+      await deleteDoc(doc(db, 'students', studentId));
       toast({
         title: "Success",
         description: "Student deleted successfully",
@@ -297,27 +276,61 @@ const Students = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.response?.data?.error || "Failed to delete student",
+        description: error.message || "Failed to delete student",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Generate CSV content
+  const generateCSV = (studentsToExport: Student[]): string => {
+    const headers = [
+      'Student ID',
+      'Name',
+      'English Name',
+      'Phone Number',
+      'Class',
+      'Description',
+      'Father Name',
+      'Mother Name',
+      'Photo URL',
+      'Academic Year',
+      'Section',
+      'Shift'
+    ];
+    const csvContent = [
+      headers.join(','),
+      ...studentsToExport.map((student) => [
+        `"${(student.studentId || '').replace(/"/g, '""')}"`,
+        `"${student.name.replace(/"/g, '""')}"`,
+        `"${student.englishName.replace(/"/g, '""')}"`,
+        `"${student.number.replace(/"/g, '""')}"`,
+        `"${student.class.replace(/"/g, '""')}"`,
+        `"${(student.description || '').replace(/"/g, '""')}"`,
+        `"${(student.fatherName || '').replace(/"/g, '""')}"`,
+        `"${(student.motherName || '').replace(/"/g, '""')}"`,
+        `"${(student.photoUrl || '').replace(/"/g, '""')}"`,
+        student.academicYear,
+        student.section,
+        student.shift
+      ].join(','))
+    ].join('\n');
+    return csvContent;
+  };
+
+  // Performance optimization: Memoized export students (class only, ignore search)
+  const exportStudents = useMemo(() => {
+    if (!selectedClass) return students;
+    return students.filter(student => student.class === selectedClass);
+  }, [students, selectedClass]);
+
   // Handle export to CSV
   const handleExportToCSV = async () => {
     try {
-      const params: any = {};
-      if (selectedClass) {
-        params.class = selectedClass;
-      }
-
-      const response = await axios.get(`${BACKEND_URL}/students/export-csv`, {
-        params,
-        responseType: 'blob'
-      });
-
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const csvContent = generateCSV(exportStudents);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `students${selectedClass ? `_${selectedClass}` : ''}.csv`);
@@ -334,7 +347,7 @@ const Students = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.response?.data?.error || "Failed to export CSV",
+        description: error.message || "Failed to export CSV",
       });
     }
   };
@@ -379,16 +392,10 @@ const Students = () => {
     fetchStudents();
   }, [fetchStudents]);
 
-  useEffect(() => {
-    if (searchQuery) {
-      debouncedSearch(searchQuery);
-    }
-  }, [searchQuery, debouncedSearch]);
-
   // Calculate pagination
-  const totalPages = Math.ceil(totalStudents / 30);
+  const totalPages = Math.ceil(displayTotal / 30);
   const startIndex = currentPage * 30;
-  const endIndex = Math.min(startIndex + 30, totalStudents);
+  const endIndex = Math.min(startIndex + 30, displayTotal);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -411,6 +418,7 @@ const Students = () => {
               onClick={() => {
                 setEditStudent({
                   id: '',
+                  studentId: '',
                   name: '',
                   number: '',
                   class: '',
@@ -439,26 +447,27 @@ const Students = () => {
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
+                <input
+                  type="text"
                   placeholder="Search students..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-          </div>
+            </div>
             <div className="flex gap-2">
-          <select
-            value={searchField}
+              <select
+                value={searchField}
                 onChange={(e) => setSearchField(e.target.value as any)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Fields</option>
-            <option value="name">Name</option>
+              >
+                <option value="all">All Fields</option>
+                <option value="studentId">Student ID</option>
+                <option value="name">Name</option>
                 <option value="number">Phone Number</option>
-            <option value="class">Class</option>
-          </select>
+                <option value="class">Class</option>
+              </select>
               <select
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value)}
@@ -470,7 +479,7 @@ const Students = () => {
                     {className}
                   </option>
                 ))}
-          </select>
+              </select>
             </div>
           </div>
         </div>
@@ -482,25 +491,25 @@ const Students = () => {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
               <p className="mt-4 text-gray-600">Loading students...</p>
             </div>
-          ) : classFilteredStudents.length > 0 ? (
+          ) : paginatedStudents.length > 0 ? (
             <>
               <div className="p-6 border-b border-gray-200">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Students ({classFilteredStudents.length} of {totalStudents})
+                    Students ({displayTotal})
                   </h2>
-          <div className="text-sm text-gray-600">
-                    Showing {startIndex + 1}-{endIndex} of {totalStudents}
-          </div>
+                  <div className="text-sm text-gray-600">
+                    Showing {startIndex + 1}-{endIndex} of {displayTotal}
+                  </div>
                 </div>
-        </div>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 p-6">
-                {classFilteredStudents.map((student) => (
-                <motion.div
-                  key={student.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                {paginatedStudents.map((student) => (
+                  <motion.div
+                    key={student.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
                     className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow"
                   >
                     <div className="flex items-start justify-between mb-3">
@@ -515,9 +524,12 @@ const Students = () => {
                         )}
                         <h3 className="font-semibold text-gray-900 text-center">{student.name}</h3>
                       </div>
-                      </div>
+                    </div>
 
                     <div className="space-y-2 text-sm">
+                      {student.studentId && (
+                        <p><span className="font-medium">ID:</span> {student.studentId}</p>
+                      )}
                       <p><span className="font-medium">Phone:</span> {student.number}</p>
                       <p><span className="font-medium">Class:</span> {student.class}</p>
                       <p><span className="font-medium">Year:</span> {student.academicYear}</p>
@@ -533,9 +545,9 @@ const Students = () => {
                         <p><span className="font-medium">Mother:</span> {student.motherName}</p>
                       )}
                     </div>
-                    
+
                     <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-                          <button
+                      <button
                         onClick={() => {
                           setEditStudent(student);
                           setShowModal(true);
@@ -544,14 +556,14 @@ const Students = () => {
                         title="Edit Student"
                       >
                         <Edit size={16} />
-                          </button>
-                        <button
+                      </button>
+                      <button
                         onClick={() => setShowDeleteModal(student.id)}
                         className="text-red-600 hover:text-red-800"
                         title="Delete Student"
-                        >
+                      >
                         <Trash size={16} />
-                        </button>
+                      </button>
                       {student.photoUrl && (
                         <button
                           onClick={() => handlePhotoDownload(student)}
@@ -561,34 +573,34 @@ const Students = () => {
                           <Download size={16} />
                         </button>
                       )}
-                  </div>
-                </motion.div>
+                    </div>
+                  </motion.div>
                 ))}
-        </div>
+              </div>
 
-        {/* Pagination */}
+              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="p-6 border-t border-gray-200">
                   <div className="flex justify-between items-center">
-            <button
+                    <button
                       onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-              disabled={currentPage === 0}
+                      disabled={currentPage === 0}
                       className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-            >
-              Previous
-            </button>
+                    >
+                      Previous
+                    </button>
                     <span className="text-gray-600">
                       Page {currentPage + 1} of {totalPages}
                     </span>
-            <button
+                    <button
                       onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
                       disabled={currentPage === totalPages - 1}
                       className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-            >
-              Next
-            </button>
-          </div>
-          </div>
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               )}
             </>
           ) : (
@@ -629,16 +641,25 @@ const Students = () => {
                 {editStudent && (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Student ID *</label>
+                        <input
+                          type="text"
+                          value={editStudent.studentId}
+                          onChange={(e) => setEditStudent({ ...editStudent, studentId: e.target.value })}
+                          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">Name *</label>
-                      <input
+                        <input
                           type="text"
                           value={editStudent.name}
                           onChange={(e) => setEditStudent({ ...editStudent, name: e.target.value })}
                           className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">English Name</label>
                         <input
                           type="text"
@@ -649,48 +670,48 @@ const Students = () => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Class *</label>
-                      <select
+                        <select
                           value={editStudent.class}
                           onChange={(e) => setEditStudent({ ...editStudent, class: e.target.value })}
                           className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Select Class</option>
+                        >
+                          <option value="">Select Class</option>
                           {CLASS_OPTIONS.map((className) => (
                             <option key={className} value={className}>
                               {className}
                             </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">Phone Number *</label>
-                      <input
+                        <input
                           type="text"
                           value={editStudent.number}
                           onChange={(e) => setEditStudent({ ...editStudent, number: e.target.value })}
                           className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           placeholder="01XXXXXXXXX"
-                      />
-                    </div>
-                    <div>
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">Father's Name</label>
-                      <input
+                        <input
                           type="text"
                           value={editStudent.fatherName}
                           onChange={(e) => setEditStudent({ ...editStudent, fatherName: e.target.value })}
                           className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">Mother's Name</label>
-                      <input
+                        <input
                           type="text"
                           value={editStudent.motherName}
                           onChange={(e) => setEditStudent({ ...editStudent, motherName: e.target.value })}
                           className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">Academic Year</label>
                         <select
                           value={editStudent.academicYear}
@@ -703,7 +724,7 @@ const Students = () => {
                             </option>
                           ))}
                         </select>
-                    </div>
+                      </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Section</label>
                         <select
@@ -717,8 +738,8 @@ const Students = () => {
                             </option>
                           ))}
                         </select>
-                  </div>
-                  <div>
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium mb-1">Shift</label>
                         <select
                           value={editStudent.shift}
@@ -733,18 +754,18 @@ const Students = () => {
                         </select>
                       </div>
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium mb-1">Description</label>
-                    <textarea
+                      <textarea
                         value={editStudent.description}
                         onChange={(e) => setEditStudent({ ...editStudent, description: e.target.value })}
                         rows={3}
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      />
+                    </div>
 
-                  <div>
+                    <div>
                       <label className="block text-sm font-medium mb-1">Photo</label>
                       <div className="flex gap-2">
                         <input
@@ -775,24 +796,24 @@ const Students = () => {
                             alt="Preview"
                             className="w-20 h-20 object-cover rounded-lg border"
                           />
-                    </div>
+                        </div>
                       )}
-                  </div>
+                    </div>
 
                     <div className="flex gap-2 pt-4">
-                  <button
+                      <button
                         onClick={handleSave}
                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
+                      >
                         {editStudent.id ? 'Update Student' : 'Add Student'}
-                  </button>
-                  <button
+                      </button>
+                      <button
                         onClick={() => setShowModal(false)}
                         className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
                       >
                         Cancel
-                  </button>
-                </div>
+                      </button>
+                    </div>
                   </div>
                 )}
               </motion.div>
@@ -820,18 +841,18 @@ const Students = () => {
                   Are you sure you want to delete this student? This action cannot be undone.
                 </p>
                 <div className="flex gap-2">
-                    <button
+                  <button
                     onClick={() => handleDelete(showDeleteModal)}
                     className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                   >
                     Delete
-                    </button>
-                    <button
+                  </button>
+                  <button
                     onClick={() => setShowDeleteModal(null)}
                     className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
                   >
                     Cancel
-                    </button>
+                  </button>
                 </div>
               </motion.div>
             </motion.div>

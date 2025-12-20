@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
 import { Plus, Edit, Trash, X, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
@@ -21,11 +20,11 @@ import { cn } from '@/lib/utils';
 import { format, addYears, formatISO } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import classesData from '@/lib/classes.json';
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 
 interface FeeSetting {
-  feeId: string;
+  feeId?: string;
   feeType: string;
   classes: string[];
   description: string;
@@ -113,8 +112,12 @@ const FeeSettings: React.FC = () => {
   const fetchFeeSettings = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await axios.get(`${BACKEND_URL}/fee-settings`);
-      setFeeSettings(response.data.feeSettings || []);
+      const snapshot = await getDocs(collection(db, 'fee-settings'));
+      const allFeeSettings: FeeSetting[] = snapshot.docs.map((docSnapshot) => ({
+        feeId: docSnapshot.id,
+        ...docSnapshot.data(),
+      })) as FeeSetting[];
+      setFeeSettings(allFeeSettings);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -145,17 +148,15 @@ const FeeSettings: React.FC = () => {
         ...editFeeSetting,
         classes: editFeeSetting.classes,
       };
+      delete (payload as any).feeId;
+
       if (editFeeSetting.feeId) {
-        const response = await axios.put(`${BACKEND_URL}/fee-settings/${editFeeSetting.feeId}`, payload);
-        const updatedSetting = response.data.feeSetting;
-        setFeeSettings(prev =>
-          prev.map(fee => fee.feeId === updatedSetting.feeId ? updatedSetting : fee)
-        );
+        await updateDoc(doc(db, 'fee-settings', editFeeSetting.feeId), payload);
         toast({ title: 'Success', description: 'Fee setting updated successfully.' });
       } else {
-        const response = await axios.post(`${BACKEND_URL}/fee-settings`, payload);
-        const newSetting = response.data.feeSetting;
-        setFeeSettings(prev => [...prev, newSetting]);
+        const docRef = await addDoc(collection(db, 'fee-settings'), payload);
+        const newSetting = { ...payload, feeId: docRef.id };
+        setFeeSettings(prev => [...prev, newSetting as FeeSetting]);
         toast({ title: 'Success', description: 'Fee setting added successfully.' });
       }
       setShowModal(false);
@@ -174,7 +175,7 @@ const FeeSettings: React.FC = () => {
   const handleDelete = async (feeId: string) => {
     setIsLoading(true);
     try {
-      await axios.delete(`${BACKEND_URL}/fee-settings/${feeId}`);
+      await deleteDoc(doc(db, 'fee-settings', feeId));
       setFeeSettings(prev => prev.filter(s => s.feeId !== feeId));
       toast({ title: 'Success', description: 'Fee setting deleted successfully.' });
     } catch (error) {
@@ -256,7 +257,10 @@ const FeeSettings: React.FC = () => {
     }
     setIsLoading(true);
     try {
-      await Promise.all(validFees.map(fee => axios.post(`${BACKEND_URL}/fee-settings`, fee)));
+      await Promise.all(validFees.map(async fee => {
+        const docRef = await addDoc(collection(db, 'fee-settings'), fee);
+        return { ...fee, feeId: docRef.id };
+      }));
       toast({ title: 'Success', description: 'Batch fees added successfully.' });
       setBatchFees([{ feeType: '', classes: [], amount: 0, description: '', activeFrom: todayISO, activeTo: nextYearISO, canOverride: false }]);
       fetchFeeSettings();
@@ -284,7 +288,7 @@ const FeeSettings: React.FC = () => {
       const newOption = { value: newType.toLowerCase(), label: newType };
       setCustomFeeTypes(prev => [...prev, newOption]);
       // Optionally, send to backend for persistence
-      axios.post(`${BACKEND_URL}/fee-types`, newOption).catch(() => {});
+      // axios.post(`${BACKEND_URL}/fee-types`, newOption).catch(() => {});
     }
   };
 
@@ -351,7 +355,7 @@ const FeeSettings: React.FC = () => {
                             <Button
                               variant="destructive"
                               size="icon"
-                              onClick={() => handleDelete(setting.feeId)}
+                              onClick={() => handleDelete(setting.feeId!)}
                             >
                               <Trash className="h-4 w-4" />
                             </Button>
@@ -531,7 +535,7 @@ const FeeSettings: React.FC = () => {
                     <Input
                       placeholder="Fee Type (e.g., monthly_fee)"
                       value={editFeeSetting.feeType || ''}
-                      onChange={(e) => setEditFeeSetting({ ...editFeeSetting, feeType: e.target.value })}
+                      onChange={(e) => setEditFeeSetting({ ...editFeeSetting, feeType: e.target.value } as any)}
                     />
                   </div>
                   <div>
@@ -568,7 +572,7 @@ const FeeSettings: React.FC = () => {
                     <Input
                       placeholder="Description"
                       value={editFeeSetting.description || ''}
-                      onChange={(e) => setEditFeeSetting({ ...editFeeSetting, description: e.target.value })}
+                      onChange={(e) => setEditFeeSetting({ ...editFeeSetting, description: e.target.value } as any)}
                     />
                   </div>
                   <div>
@@ -580,7 +584,7 @@ const FeeSettings: React.FC = () => {
                       type="number"
                       placeholder="Amount"
                       value={editFeeSetting.amount || 0}
-                      onChange={(e) => setEditFeeSetting({ ...editFeeSetting, amount: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setEditFeeSetting({ ...editFeeSetting, amount: parseFloat(e.target.value) || 0 } as any)}
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -600,8 +604,8 @@ const FeeSettings: React.FC = () => {
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
-                          selected={new Date(editFeeSetting.activeFrom)}
-                          onSelect={(date) => setEditFeeSetting({ ...editFeeSetting, activeFrom: date?.toISOString() })}
+                          selected={new Date(editFeeSetting.activeFrom as string)}
+                          onSelect={(date) => setEditFeeSetting({ ...editFeeSetting, activeFrom: date?.toISOString() } as any)}
                           initialFocus
                         />
                       </PopoverContent>
@@ -616,14 +620,14 @@ const FeeSettings: React.FC = () => {
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {editFeeSetting.activeTo ? format(new Date(editFeeSetting.activeTo), "PPP") : <span>Pick an end date</span>}
+                          {editFeeSetting.activeTo ? format(new Date(editFeeSetting.activeTo as string), "PPP") : <span>Pick an end date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
-                          selected={new Date(editFeeSetting.activeTo)}
-                          onSelect={(date) => setEditFeeSetting({ ...editFeeSetting, activeTo: date?.toISOString() })}
+                          selected={new Date(editFeeSetting.activeTo as string)}
+                          onSelect={(date) => setEditFeeSetting({ ...editFeeSetting, activeTo: date?.toISOString() } as any)}
                           initialFocus
                         />
                       </PopoverContent>
@@ -633,7 +637,7 @@ const FeeSettings: React.FC = () => {
                     <Checkbox
                       id="canOverride"
                       checked={editFeeSetting.canOverride}
-                      onCheckedChange={(checked) => setEditFeeSetting({ ...editFeeSetting, canOverride: !!checked })}
+                      onCheckedChange={(checked) => setEditFeeSetting({ ...editFeeSetting, canOverride: !!checked } as any)}
                     />
                     <label htmlFor="canOverride">Allow override for individual students</label>
                   </div>
@@ -653,4 +657,4 @@ const FeeSettings: React.FC = () => {
   );
 };
 
-export default FeeSettings; 
+export default FeeSettings;

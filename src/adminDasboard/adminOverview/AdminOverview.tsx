@@ -49,13 +49,67 @@ const AdminOverview: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/admin-overview`);
-      if (!response.ok) throw new Error(`Failed to fetch admin overview: ${response.statusText}`);
-      const { overview } = await response.json();
-      setStats(overview || {});
+      const studentsRef = collection(db, 'students');
+      const feeRef = collection(db, 'fee-collections');
+
+      const [studentsSnap, feeSnap] = await Promise.all([
+        getDocs(studentsRef),
+        getDocs(feeRef)
+      ]);
+
+      // Process Student Stats
+      const classDistribution: { [key: string]: number } = {};
+      let incompleteProfiles = 0;
+      const parentsSet = new Set();
+
+      studentsSnap.forEach(doc => {
+        const data = doc.data();
+        // Class distribution
+        if (data.class) {
+          classDistribution[data.class] = (classDistribution[data.class] || 0) + 1;
+        }
+        // Incomplete profiles (missing photo, father, or phone)
+        if (!data.photoUrl || !data.fatherName || !data.number) {
+          incompleteProfiles++;
+        }
+        // Unique parents estimation
+        if (data.fatherName) {
+          parentsSet.add(data.fatherName.trim().toLowerCase());
+        }
+      });
+
+      // Process Financial Stats (Income from fees)
+      let totalIncome = 0;
+      let totalTransactions = feeSnap.size;
+
+      feeSnap.forEach(doc => {
+        const data = doc.data();
+        totalIncome += Number(data.amountPaid || 0);
+      });
+
+      // Format as the original overview expected
+      const overview = {
+        students: {
+          totalStudents: studentsSnap.size,
+          classDistribution,
+          incompleteProfiles,
+          uniqueParents: parentsSet.size
+        },
+        transactions: {
+          totalIncome,
+          totalExpenses: 0, // Will be updated by loadTeacherStats/integration
+          netBalance: totalIncome,
+          totalTransactions
+        },
+        lastUpdated: new Date().toISOString()
+      };
+
+      setStats(overview);
+      setError(null);
     } catch (err) {
+      console.error('Error in loadStats:', err);
       setError('Failed to load statistics');
-      toast.error('Connection error. Please try again.');
+      toast.error('Failed to aggregate data from database');
     }
   };
 

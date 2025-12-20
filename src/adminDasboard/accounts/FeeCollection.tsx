@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, X, Printer, Calendar as CalendarIcon } from 'lucide-react';
-import axios from 'axios';
+import axios from 'axios'; // Keep for SMS only
 import html2pdf from 'html2pdf.js';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { FiSend } from 'react-icons/fi';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import classesData from '@/lib/classes.json';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, query, where, doc, updateDoc, getDoc } from 'firebase/firestore';
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -47,6 +49,29 @@ interface FeeSetting {
   amount: number;
 }
 
+interface FeeCollectionRecord {
+  id: string;
+  date: string;
+  studentId: string;
+  feeId: string;
+  month: string;
+  year: string;
+  quantity: number;
+  amountPaid: number;
+  paymentMethod: string;
+  description: string;
+}
+
+interface CustomFee {
+  id: string;
+  studentId: string;
+  feeId: string;
+  newAmount: number;
+  effectiveFrom: string;
+  active: boolean;
+  reason: string;
+}
+
 const CLASS_OPTIONS = (classesData as { name: string }[]).map(cls => cls.name);
 
 const FeeCollection = () => {
@@ -65,6 +90,62 @@ const FeeCollection = () => {
   const [smsModalOpen, setSmsModalOpen] = useState(false);
   const [allFeeSettings, setAllFeeSettings] = useState<FeeSetting[]>([]);
 
+  // Compute fee summary
+  const computeFeeSummary = useCallback(async (student: Student) => {
+    try {
+      // Fetch all fee settings
+      const feeSettingsSnapshot = await getDocs(collection(db, 'fee-settings'));
+      const feeSettings: FeeSetting[] = feeSettingsSnapshot.docs.map(doc => ({ feeId: doc.id, ...doc.data() } as FeeSetting));
+
+      // Filter applicable fee settings for student's class
+      const applicableFees = feeSettings.filter(fee =>
+        fee.feeId.includes(student.class) || fee.feeId === 'all' // Assume feeId contains class or 'all'
+      );
+
+      // Fetch custom fees for student
+      const customQuery = query(collection(db, 'custom-student-fees'), where('studentId', '==', student.id), where('active', '==', true));
+      const customSnapshot = await getDocs(customQuery);
+      const customFees: CustomFee[] = customSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CustomFee));
+
+      // Fetch existing payments for student this year/month
+      const year = new Date().getFullYear().toString();
+      const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
+      const paymentQuery = query(
+        collection(db, 'fee-collections'),
+        where('studentId', '==', student.id),
+        where('year', '==', year),
+        where('month', '==', month)
+      );
+      const paymentSnapshot = await getDocs(paymentQuery);
+      const payments: FeeCollectionRecord[] = paymentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeCollectionRecord));
+
+      // Compute summary
+      const summary: FeeAnalysisItem[] = applicableFees.map(fee => {
+        const custom = customFees.find(c => c.feeId === fee.feeId);
+        const actualAmount = custom ? custom.newAmount : fee.amount;
+        const totalPaid = payments
+          .filter(p => p.feeId === fee.feeId)
+          .reduce((sum, p) => sum + p.amountPaid, 0);
+        const dueAmount = Math.max(0, actualAmount - totalPaid);
+
+        return {
+          feeId: fee.feeId,
+          description: fee.description,
+          actualAmount,
+          totalPaid,
+          dueAmount,
+          selected: false,
+          amountToPay: dueAmount > 0 ? dueAmount : 0,
+        };
+      });
+
+      setCollectionItems(summary);
+    } catch (error) {
+      console.error('Error computing fee summary:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to compute fee summary.' });
+    }
+  }, [toast]);
+
   const handleLoadStudent = useCallback(async () => {
     if (!studentIdInput) {
       toast({ variant: 'destructive', title: 'Error', description: 'Please enter a student ID.' });
@@ -72,16 +153,18 @@ const FeeCollection = () => {
     }
     setIsLoading(true);
     try {
-      let student = null;
+      let student: Student | null = null;
       // Try by ID first
-      let response = await axios.get(`${BACKEND_URL}/students`, { params: { id: studentIdInput, limit: 1 } });
-      if (response.data.students && response.data.students.length > 0) {
-        student = response.data.students[0];
+      const idQuery = query(collection(db, 'students'), where('id', '==', studentIdInput));
+      let snapshot = await getDocs(idQuery);
+      if (snapshot.docs.length > 0) {
+        student = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Student;
       } else {
         // Fallback to number
-        response = await axios.get(`${BACKEND_URL}/students`, { params: { number: studentIdInput, limit: 1 } });
-        if (response.data.students && response.data.students.length > 0) {
-          student = response.data.students[0];
+        const numberQuery = query(collection(db, 'students'), where('number', '==', studentIdInput));
+        snapshot = await getDocs(numberQuery);
+        if (snapshot.docs.length > 0) {
+          student = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Student;
         }
       }
 
@@ -93,15 +176,7 @@ const FeeCollection = () => {
       }
       setSelectedStudent(student);
 
-      const analysisResponse = await axios.get(`${BACKEND_URL}/fee-analysis/${student.id}`);
-      const analysisData = analysisResponse.data.feeSummary;
-      
-      const uiReadyItems = analysisData.map((item: any) => ({
-        ...item,
-        selected: false,
-        amountToPay: item.dueAmount > 0 ? item.dueAmount : 0,
-      }));
-      setCollectionItems(uiReadyItems);
+      await computeFeeSummary(student);
 
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to load student data.' });
@@ -110,7 +185,7 @@ const FeeCollection = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [studentIdInput, toast]);
+  }, [studentIdInput, toast, computeFeeSummary]);
 
   const handleItemSelection = (feeId: string, isSelected: boolean) => {
     setCollectionItems(prev =>
@@ -160,14 +235,14 @@ const FeeCollection = () => {
     const officeCopy = studentCopy.replace('Student Copy', 'Office Copy');
 
     const combined = `<div ref={receiptRef}>${studentCopy}${officeCopy}</div>`;
-    
+
     const element = document.createElement('div');
     element.innerHTML = combined;
 
     html2pdf().from(element).set({
-        margin: 10,
-        filename: `receipt-${selectedStudent?.id}-${transactionId}.pdf`,
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      margin: 10,
+      filename: `receipt-${selectedStudent?.id}-${transactionId}.pdf`,
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     }).save();
   };
 
@@ -180,7 +255,7 @@ const FeeCollection = () => {
 
     setIsLoading(true);
     const transactionId = `${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}${new Date().getDate().toString().padStart(2, '0')}-${Date.now()}`;
-    
+
     try {
       const collectionPromises = itemsToPay.map(item => {
         const payload = {
@@ -194,7 +269,7 @@ const FeeCollection = () => {
           paymentMethod: paymentMethod,
           description: narration || item.description,
         };
-        return axios.post(`${BACKEND_URL}/fee-collections`, payload);
+        return addDoc(collection(db, 'fee-collections'), payload);
       });
 
       await Promise.all(collectionPromises);
@@ -256,12 +331,15 @@ const FeeCollection = () => {
   };
 
   useEffect(() => {
-    axios.get(`${BACKEND_URL}/fee-settings`).then(res => {
-      setAllFeeSettings(res.data.feeSettings || []);
-    });
+    const fetchAllFeeSettings = async () => {
+      const snapshot = await getDocs(collection(db, 'fee-settings'));
+      const allSettings: FeeSetting[] = snapshot.docs.map(doc => ({ feeId: doc.id, ...doc.data() } as FeeSetting));
+      setAllFeeSettings(allSettings);
+    };
+    fetchAllFeeSettings();
   }, []);
 
-  const handleAddOtherFee = (feeId) => {
+  const handleAddOtherFee = (feeId: string) => {
     const fee = allFeeSettings.find(f => f.feeId === feeId);
     if (fee && !collectionItems.some(item => item.feeId === feeId)) {
       setCollectionItems(prev => [
@@ -283,12 +361,12 @@ const FeeCollection = () => {
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-4">
         <h1 className="text-3xl font-bold text-gray-900">Fees Collection</h1>
-        
+
         {/* Top Controls */}
         <div className="bg-white p-4 rounded-lg shadow-sm grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 items-end">
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700">St Code</label>
-            <Input 
+            <Input
               placeholder="Enter student ID"
               value={studentIdInput}
               onChange={(e) => setStudentIdInput(e.target.value)}
@@ -309,7 +387,7 @@ const FeeCollection = () => {
                 <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
               </SelectContent>
             </Select>
-                </div>
+          </div>
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700">Collection Date</label>
             <Popover>
@@ -321,11 +399,11 @@ const FeeCollection = () => {
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={collectionDate} onSelect={(d) => setCollectionDate(d || new Date())} initialFocus /></PopoverContent>
             </Popover>
-            </div>
+          </div>
           <div className="col-span-full lg:col-span-1">
-             <label className="block text-sm font-medium text-gray-700">Transaction Number</label>
-             <Input disabled value="Auto-generated" />
-        </div>
+            <label className="block text-sm font-medium text-gray-700">Transaction Number</label>
+            <Input disabled value="Auto-generated" />
+          </div>
           <div className="col-span-full">
             <label className="block text-sm font-medium text-gray-700">Narration</label>
             <Input placeholder="Optional notes..." value={narration} onChange={(e) => setNarration(e.target.value)} />
@@ -337,7 +415,7 @@ const FeeCollection = () => {
           <div className="bg-white p-4 rounded-lg shadow-sm text-blue-800">
             <p><strong>Student:</strong> {selectedStudent.name}, <strong>Class:</strong> {selectedStudent.class}, <strong>Section:</strong> {selectedStudent.section || 'N/A'}, <strong>Shift:</strong> {selectedStudent.shift || 'N/A'}</p>
             <p><strong>Mobile:</strong> {selectedStudent.number}, <strong>Father's Name:</strong> {selectedStudent.fatherName || 'N/A'}</p>
-                </div>
+          </div>
         )}
 
         {/* Collection Entry Table */}
@@ -346,9 +424,9 @@ const FeeCollection = () => {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[50px]">
-                  <Checkbox 
+                  <Checkbox
                     checked={collectionItems.every(item => item.selected)}
-                    onCheckedChange={(checked) => setCollectionItems(prev => prev.map(item => ({...item, selected: !!checked})))}
+                    onCheckedChange={(checked) => setCollectionItems(prev => prev.map(item => ({ ...item, selected: !!checked })))}
                   />
                 </TableHead>
                 <TableHead>Installment</TableHead>
@@ -375,7 +453,7 @@ const FeeCollection = () => {
                   <TableCell className="text-right text-red-600">{(item.actualAmount - (item.totalPaid + item.amountToPay)).toFixed(2)}</TableCell>
                   <TableCell className="text-right">
                     <Input
-                        type="number"
+                      type="number"
                       className="text-right"
                       value={item.amountToPay}
                       onChange={(e) => handleAmountToPayChange(item.feeId, parseFloat(e.target.value) || 0)}
@@ -392,39 +470,39 @@ const FeeCollection = () => {
               )}
             </TableBody>
           </Table>
-                    </div>
-        
+        </div>
+
         {/* Footer Actions */}
         <div className="bg-white p-4 rounded-lg shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
+          <div>
             <p className="text-lg">Total Amount to Pay: <span className="font-bold text-green-600">৳{totalToCollect.toFixed(2)}</span></p>
           </div>
           <div className="flex flex-col md:flex-row items-center gap-4">
             <Button onClick={handlePost} disabled={isLoading || totalToCollect === 0}>
-              <Plus className="mr-2 h-4 w-4"/> Post
+              <Plus className="mr-2 h-4 w-4" /> Post
             </Button>
-            <Button variant="outline" onClick={() => generateAndPrintInvoice([], 'test-invoice')}><Printer className="mr-2 h-4 w-4"/> Download Receipt</Button>
+            <Button variant="outline" onClick={() => generateAndPrintInvoice([], 'test-invoice')}><Printer className="mr-2 h-4 w-4" /> Download Receipt</Button>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="secondary" onClick={() => setSmsModalOpen(true)} disabled={!selectedStudent}>
-                  <FiSend className="mr-2 h-4 w-4"/> Send SMS
+                  <FiSend className="mr-2 h-4 w-4" /> Send SMS
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
                 Send a payment reminder or custom message to the student's parent.
               </TooltipContent>
             </Tooltip>
-                    </div>
-                    </div>
+          </div>
+        </div>
         {/* SMS Modal */}
         <Dialog open={smsModalOpen} onOpenChange={setSmsModalOpen}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Send SMS to Parent</DialogTitle>
             </DialogHeader>
-                    <div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">SMS Message</label>
-                      <textarea
+              <textarea
                 className="w-full border rounded p-2 text-sm"
                 rows={4}
                 value={smsMessage}
@@ -434,13 +512,13 @@ const FeeCollection = () => {
               <p className="text-xs text-gray-500 mt-2">
                 এখানে আপনি SMS টেমপ্লেট সম্পাদনা করতে পারেন। বকেয়া, ছাত্রের নাম, এবং অন্যান্য তথ্য স্বয়ংক্রিয়ভাবে যুক্ত হয়েছে, তবে আপনি চাইলে বার্তা পরিবর্তন করতে পারবেন। এই বার্তা অভিভাবকের মোবাইলে যাবে।
               </p>
-                    </div>
+            </div>
             <DialogFooter className="flex flex-row gap-2 justify-end">
               <DialogClose asChild>
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
               <Button onClick={async () => { await handleSendSms(); setSmsModalOpen(false); }} disabled={smsLoading || !selectedStudent}>
-                <FiSend className="mr-2 h-4 w-4"/> {smsLoading ? 'Sending...' : 'Send SMS'}
+                <FiSend className="mr-2 h-4 w-4" /> {smsLoading ? 'Sending...' : 'Send SMS'}
               </Button>
             </DialogFooter>
           </DialogContent>

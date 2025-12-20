@@ -195,6 +195,18 @@ export const login = async (
     return user;
   } catch (error: any) {
     console.error('Error signing in:', error);
+    // Ensure we sign out if there was an error after authentication but before full login completion
+    if (auth.currentUser) {
+      try {
+        await firebaseSignOut(auth);
+      } catch (signOutError) {
+        console.error('Error signing out after failed login:', signOutError);
+      }
+    }
+
+    if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+      throw new Error('Access denied. Your account might not be fully set up or you lack permissions. Please contact support.');
+    }
     throw new Error(error.message || 'Failed to sign in');
   }
 };

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Edit, Trash, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
@@ -15,11 +14,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 import classesData from '@/lib/classes.json';
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
-
 interface CustomFee {
+  id?: string;
   studentId: string;
   feeId: string;
   newAmount: number;
@@ -55,8 +55,12 @@ const CustomStudentFees: React.FC = () => {
   const fetchCustomFees = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await axios.get(`${BACKEND_URL}/custom-student-fees`);
-      setCustomFees(response.data.customFees || []);
+      const snapshot = await getDocs(collection(db, 'custom-student-fees'));
+      const allCustomFees: CustomFee[] = snapshot.docs.map((docSnapshot) => ({
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      })) as CustomFee[];
+      setCustomFees(allCustomFees);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -74,10 +78,13 @@ const CustomStudentFees: React.FC = () => {
       return;
     }
     try {
-      const response = await axios.get(`${BACKEND_URL}/students`, {
-        params: { number: query, limit: 10 },
-      });
-      setStudents(response.data.students || []);
+      const q = query(collection(db, 'students'), where('number', '==', query));
+      const snapshot = await getDocs(q);
+      const allStudents: Student[] = snapshot.docs.map((docSnapshot) => ({
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      })) as Student[];
+      setStudents(allStudents.slice(0, 10));
     } catch (error) {
       // Silently fail, student search is not critical
       console.error("Failed to fetch students", error);
@@ -86,8 +93,12 @@ const CustomStudentFees: React.FC = () => {
 
   const fetchFeeSettings = useCallback(async () => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/fee-settings`);
-      setFeeSettings(response.data.feeSettings || []);
+      const snapshot = await getDocs(collection(db, 'fee-settings'));
+      const allFeeSettings: FeeSetting[] = snapshot.docs.map((docSnapshot) => ({
+        feeId: docSnapshot.id,
+        ...docSnapshot.data(),
+      })) as FeeSetting[];
+      setFeeSettings(allFeeSettings);
     } catch (error) {
       // Silently fail, fee settings are not critical for initial load
       console.error("Failed to fetch fee settings", error);
@@ -111,17 +122,16 @@ const CustomStudentFees: React.FC = () => {
 
     setIsLoading(true);
     try {
+      const customFeeData = { ...editCustomFee };
+      delete (customFeeData as any).id;
+
       const isEditing = customFees.some(f => f.studentId === editCustomFee.studentId && f.feeId === editCustomFee.feeId);
-      if (isEditing) {
-        const response = await axios.put(`${BACKEND_URL}/custom-student-fees/${editCustomFee.studentId}/${editCustomFee.feeId}`, editCustomFee);
-        const updatedFee = response.data.customFee;
-        setCustomFees(prevFees =>
-          prevFees.map(f => (f.studentId === updatedFee.studentId && f.feeId === updatedFee.feeId ? updatedFee : f))
-        );
+      if (isEditing && editCustomFee.id) {
+        await updateDoc(doc(db, 'custom-student-fees', editCustomFee.id), customFeeData);
         toast({ title: 'Success', description: 'Custom fee updated successfully.' });
       } else {
-        const response = await axios.post(`${BACKEND_URL}/custom-student-fees`, editCustomFee);
-        const newFee = response.data.customFee;
+        const docRef = await addDoc(collection(db, 'custom-student-fees'), customFeeData);
+        const newFee = { ...customFeeData, id: docRef.id };
         setCustomFees(prevFees => [...prevFees, newFee]);
         toast({ title: 'Success', description: 'Custom fee added successfully.' });
       }
@@ -138,11 +148,11 @@ const CustomStudentFees: React.FC = () => {
     }
   };
 
-  const handleDelete = async (studentId: string, feeId: string) => {
+  const handleDelete = async (id: string) => {
     setIsLoading(true);
     try {
-      await axios.delete(`${BACKEND_URL}/custom-student-fees/${studentId}/${feeId}`);
-      setCustomFees(prevFees => prevFees.filter(f => !(f.studentId === studentId && f.feeId === feeId)));
+      await deleteDoc(doc(db, 'custom-student-fees', id));
+      setCustomFees(prevFees => prevFees.filter(f => f.id !== id));
       toast({ title: 'Success', description: 'Custom fee deleted successfully.' });
     } catch (error) {
       toast({
@@ -166,7 +176,7 @@ const CustomStudentFees: React.FC = () => {
     });
     setShowModal(true);
   };
-  
+
   const debouncedStudentSearch = useCallback(debounce(fetchStudents, 500), [fetchStudents]);
 
   return (
@@ -195,7 +205,7 @@ const CustomStudentFees: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {customFees.map((fee) => (
-                  <TableRow key={`${fee.studentId}-${fee.feeId}`}>
+                  <TableRow key={fee.id}>
                     <TableCell>{fee.studentId}</TableCell>
                     <TableCell>{fee.feeId}</TableCell>
                     <TableCell>৳{fee.newAmount}</TableCell>
@@ -216,7 +226,7 @@ const CustomStudentFees: React.FC = () => {
                         <Button
                           variant="destructive"
                           size="icon"
-                          onClick={() => handleDelete(fee.studentId, fee.feeId)}
+                          onClick={() => handleDelete(fee.id!)}
                         >
                           <Trash className="h-4 w-4" />
                         </Button>
@@ -260,7 +270,8 @@ const CustomStudentFees: React.FC = () => {
                     />
                     {students.length > 0 && (
                       <Select
-                        onValueChange={(value) => setEditCustomFee({ ...editCustomFee, studentId: value })}
+                        value={editCustomFee.studentId || ''}
+                        onValueChange={(value) => setEditCustomFee({ ...editCustomFee, studentId: value } as any)}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select a student" />
@@ -275,10 +286,10 @@ const CustomStudentFees: React.FC = () => {
                       </Select>
                     )}
                   </div>
-                  
+
                   <Select
-                    value={editCustomFee.feeId}
-                    onValueChange={(value) => setEditCustomFee({ ...editCustomFee, feeId: value })}
+                    value={editCustomFee.feeId || ''}
+                    onValueChange={(value) => setEditCustomFee({ ...editCustomFee, feeId: value } as any)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a fee setting to override" />
@@ -291,23 +302,23 @@ const CustomStudentFees: React.FC = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  
+
                   <Input
                     type="number"
                     placeholder="New Amount"
                     value={editCustomFee.newAmount || 0}
-                    onChange={(e) => setEditCustomFee({ ...editCustomFee, newAmount: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setEditCustomFee({ ...editCustomFee, newAmount: parseFloat(e.target.value) || 0 } as any)}
                   />
                   <Input
                     placeholder="Reason for override"
                     value={editCustomFee.reason || ''}
-                    onChange={(e) => setEditCustomFee({ ...editCustomFee, reason: e.target.value })}
+                    onChange={(e) => setEditCustomFee({ ...editCustomFee, reason: e.target.value } as any)}
                   />
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="isActive"
                       checked={editCustomFee.active}
-                      onCheckedChange={(checked) => setEditCustomFee({ ...editCustomFee, active: !!checked })}
+                      onCheckedChange={(checked) => setEditCustomFee({ ...editCustomFee, active: !!checked } as any)}
                     />
                     <label htmlFor="isActive">This custom fee is active</label>
                   </div>
@@ -329,11 +340,10 @@ const CustomStudentFees: React.FC = () => {
 
 function debounce<F extends (...args: any[]) => any>(func: F, wait: number): (...args: Parameters<F>) => void {
   let timeout: NodeJS.Timeout;
-  return function(this: any, ...args: Parameters<F>) {
+  return function (this: any, ...args: Parameters<F>) {
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
 }
 
-
-export default CustomStudentFees; 
+export default CustomStudentFees;
