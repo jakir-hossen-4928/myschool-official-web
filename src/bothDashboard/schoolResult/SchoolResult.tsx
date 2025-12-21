@@ -1,14 +1,31 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import axios from 'axios';
+import { db } from '@/lib/firebase';
+import {
+  collection, getDocs, addDoc, updateDoc, deleteDoc,
+  doc, query, where, orderBy, getDoc
+} from 'firebase/firestore';
 import html2pdf from 'html2pdf.js';
 // @ts-ignore
 import classesData from '@/lib/classes.json';
-import Spreadsheet from 'react-spreadsheet';
 import { getCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/use-toast';
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+import { useToast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
+import {
+  Search, Download, Filter, Trophy, GraduationCap,
+  Edit2, Trash2, Printer, ChevronRight, Info,
+  CheckCircle2, AlertCircle, LayoutGrid, List
+} from 'lucide-react';
+import {
+  Card, CardContent, CardHeader, CardTitle, CardDescription
+} from "@/components/ui/card";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from 'framer-motion';
 
 const CLASSES = (classesData as { name: string }[]).map(cls => cls.name);
 
@@ -24,146 +41,70 @@ interface ResultRow {
 }
 
 interface ExamConfig {
+  id: string;
   class: string;
   exam: string;
   subjects: string[];
 }
 
-interface ResultsTableProps {
-  parsedResults: ResultRow[];
-  loadingResults: boolean;
-  openEditModal: (result: ResultRow) => void;
-  openDeleteConfirm: (id: string) => void;
-  userRole?: string;
-}
-
-const ResultsTable: React.FC<ResultsTableProps> = React.memo(({ parsedResults, loadingResults, openEditModal, openDeleteConfirm, userRole }) => {
-  const isMobile = window.innerWidth < 768;
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border text-xs sm:text-sm">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border px-2 py-1">Student ID</th>
-            <th className="border px-2 py-1">Name</th>
-            <th className="border px-2 py-1">Class</th>
-            <th className="border px-2 py-1">Exam</th>
-            <th className="border px-2 py-1">Subject</th>
-            <th className="border px-2 py-1">Total</th>
-            <th className="border px-2 py-1">Rank</th>
-            <th className="border px-2 py-1">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loadingResults ? (
-            <tr><td colSpan={8} className="text-center py-4">Loading...</td></tr>
-          ) : parsedResults.length === 0 ? (
-            <tr><td colSpan={8} className="text-center py-4">No results found.</td></tr>
-          ) : parsedResults.map(result => {
-            const hasData = result.studentId && result.studentName && result.class && result.exam;
-            return (
-              <tr key={result.id || `${result.studentId}-${result.exam}`} className="hover:bg-gray-50">
-              <td className="border px-2 py-1 font-mono">{result.studentId}</td>
-              <td className="border px-2 py-1">{result.studentName}</td>
-              <td className="border px-2 py-1">{result.class}</td>
-              <td className="border px-2 py-1">{result.exam}</td>
-              <td className="border px-2 py-1">
-                <div className={isMobile ? 'flex flex-col gap-1' : 'flex flex-wrap gap-2'}>
-                  {Object.entries(result.subjects)
-                      .filter(([_, mark]) => mark)
-                    .map(([subject, mark]) => (
-                      <span key={subject} className="inline-block bg-gray-100 px-2 py-1 rounded text-xs">
-                        {subject}: {mark}
-                      </span>
-                    ))}
-                </div>
-              </td>
-              <td className="border px-2 py-1 font-semibold">{result.total}</td>
-              <td className="border px-2 py-1">
-                <span className="inline-block bg-blue-100 text-blue-700 rounded px-2 py-0.5 font-bold">{result.rank}</span>
-              </td>
-                <td className="border px-2 py-1">
-                  {hasData && (userRole === 'admin' || userRole === 'staff') && (
-                    <>
-                      <Button size="sm" className="mr-2" onClick={() => openEditModal(result)}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={() => openDeleteConfirm(result.id)}>Delete</Button>
-                    </>
-                  )}
-                </td>
-            </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-});
-
 const SchoolResult: React.FC = () => {
+  const { toast } = useToast();
   const [results, setResults] = useState<ResultRow[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [loadingResults, setLoadingResults] = useState(false);
   const [examConfigs, setExamConfigs] = useState<ExamConfig[]>([]);
   const [availableExams, setAvailableExams] = useState<string[]>([]);
   const [selectedExam, setSelectedExam] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
-  const [showResultModal, setShowResultModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [modalResult, setModalResult] = useState<ResultRow | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [formState, setFormState] = useState<Partial<ResultRow>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [students, setStudents] = useState<any[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [addClass, setAddClass] = useState('');
-  const [addExam, setAddExam] = useState('');
-  const [addSubjects, setAddSubjects] = useState<string[]>([]);
-  const [addMarks, setAddMarks] = useState<{ [subject: string]: string }>({});
-  const [addRank, setAddRank] = useState('');
-  const [addTotal, setAddTotal] = useState('');
-  const [isAddingNewExam, setIsAddingNewExam] = useState(false);
-  const [addExamName, setAddExamName] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
 
   useEffect(() => {
     getCurrentUser().then(setUser).catch(() => setUser(null));
   }, []);
 
+  // Fetch Exam Configs
   useEffect(() => {
     const fetchExamConfigs = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/exam-configs`);
-        setExamConfigs(res.data.configs || []);
-        setError(null);
-      } catch {
-        setError('Failed to fetch exam configurations');
-        setExamConfigs([]);
+        const snapshot = await getDocs(collection(db, 'exam-configs'));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamConfig));
+        setExamConfigs(data);
+      } catch (err) {
+        console.error("Error fetching configs:", err);
       }
     };
     fetchExamConfigs();
   }, []);
 
+  // Filter exams by class
   useEffect(() => {
     if (selectedClass) {
       const exams = examConfigs.filter(cfg => cfg.class === selectedClass).map(cfg => cfg.exam);
-      setAvailableExams(exams);
+      setAvailableExams([...new Set(exams)]);
       setSelectedExam('');
+    } else {
+      setAvailableExams([]);
     }
   }, [selectedClass, examConfigs]);
 
+  // Fetch Results
   const fetchResults = useCallback(async () => {
     setLoadingResults(true);
-    setError(null);
     try {
-      const params: Record<string, string> = {};
-      if (selectedClass) params.class = selectedClass;
-      if (selectedExam) params.exam = selectedExam;
-      const res = await axios.get(`${BACKEND_URL}/results`, { params });
-      setResults(res.data.results || []);
-    } catch {
-      setError('Failed to fetch results');
+      let q = query(collection(db, 'exam-results'), orderBy('class'), orderBy('exam'));
+
+      if (selectedClass) {
+        q = query(collection(db, 'exam-results'), where('class', '==', selectedClass));
+        if (selectedExam) {
+          q = query(q, where('exam', '==', selectedExam));
+        }
+      }
+
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ResultRow));
+      setResults(data);
+    } catch (err) {
+      console.error('Error fetching results:', err);
       setResults([]);
     } finally {
       setLoadingResults(false);
@@ -174,356 +115,297 @@ const SchoolResult: React.FC = () => {
     fetchResults();
   }, [fetchResults]);
 
-  useEffect(() => {
-    if (!addClass) {
-      setStudents([]);
-      setSelectedStudent(null);
-      setAvailableExams([]);
-      setAddExam('');
-      setIsAddingNewExam(false);
-      setAddExamName('');
-      return;
-    }
-    axios.get(`${BACKEND_URL}/students`, { params: { class: addClass, limit: 1000 } })
-      .then(res => setStudents(res.data.students || []))
-      .catch(() => setStudents([]));
-    const exams = examConfigs.filter(cfg => cfg.class === addClass).map(cfg => cfg.exam);
-    setAvailableExams([...new Set(exams)]);
-    if (!exams.includes(addExam)) setAddExam('');
-  }, [addClass, examConfigs]);
-
-  useEffect(() => {
-    if (!addClass || !addExam) {
-      setAddSubjects([]);
-      setAddMarks({});
-      return;
-    }
-    const config = examConfigs.find(cfg => cfg.class === addClass && cfg.exam === addExam);
-    setAddSubjects(config ? config.subjects : []);
-    setAddMarks({});
-  }, [addClass, addExam, examConfigs]);
-
-  useEffect(() => {
-    const sum = addSubjects.reduce((acc, sub) => acc + (parseInt(addMarks[sub] || '0', 10) || 0), 0);
-    setAddTotal(sum ? sum.toString() : '');
-  }, [addMarks, addSubjects]);
-
-  const generateResultsPDF = useCallback((rows: ResultRow[], title = 'School Results') => {
+  const generateResultsPDF = useCallback((rows: ResultRow[]) => {
     const exportDate = new Date().toLocaleString();
     const element = document.createElement('div');
     element.innerHTML = `
-      <div class="pdf-container">
-        <div class="header">
-          <h1>MySchool Official</h1>
-          <p>Result Sheet</p>
-          <p>Generated on: ${exportDate}</p>
+      <div style="font-family: sans-serif; padding: 20px;">
+        <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;">
+          <h1 style="margin: 0; color: #1a365d;">MySchool Official</h1>
+          <p style="margin: 5px 0; color: #666;">Comprehensive Result Sheet</p>
+          <p style="font-size: 12px; color: #999;">Exported: ${exportDate}</p>
         </div>
-        <table>
-          <thead>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+          <thead style="background-color: #f8fafc;">
             <tr>
-              <th>Student ID</th>
-              <th>Name</th>
-              <th>Class</th>
-              <th>Exam</th>
-              <th>Subject</th>
-              <th>Total</th>
-              <th>Rank</th>
+              <th style="border: 1px solid #ddd; padding: 10px; text-align: left;">ID</th>
+              <th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Student Name</th>
+              <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Class</th>
+              <th style="border: 1px solid #ddd; padding: 10px; text-align: left;">Exam</th>
+              <th style="border: 1px solid #ddd; padding: 10px; text-align: right;">Total</th>
+              <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Rank</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.map(result => `
+            ${rows.map(r => `
               <tr>
-                <td>${result.studentId}</td>
-                <td>${result.studentName}</td>
-                <td>${result.class}</td>
-                <td>${result.exam}</td>
-                <td>${Object.entries(result.subjects)
-                  .filter(([_, mark]) => mark)
-                  .map(([sub, mark]) => `${sub}: ${mark}`).join(', ')}</td>
-                <td>${result.total}</td>
-                <td>${result.rank}</td>
+                <td style="border: 1px solid #ddd; padding: 10px;">${r.studentId}</td>
+                <td style="border: 1px solid #ddd; padding: 10px;">${r.studentName}</td>
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${r.class}</td>
+                <td style="border: 1px solid #ddd; padding: 10px;">${r.exam}</td>
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: right; font-weight: bold;">${r.total}</td>
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${r.rank}</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
-        <div class="footer">
-          <p>Generated by MySchool Official Website • https://myschool-offical.netlify.app</p>
-        </div>
       </div>
     `;
-    const style = document.createElement('style');
-    style.textContent = `
-      .pdf-container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; color: #333; }
-      .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #2c3e50; padding-bottom: 20px; }
-      .header h1 { color: #2c3e50; margin: 0; font-size: 28px; }
-      .header p { color: #7f8c8d; margin: 5px 0 0; }
-      table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-      th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 13px; }
-      th { background-color: #2c3e50; color: white; }
-      tr:nth-child(even) { background-color: #f9f9f9; }
-      tr:hover { background-color: #f1f1f1; }
-      .footer { margin-top: 40px; text-align: center; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d; font-size: 13px; }
-      @media print { @page { margin: 2cm; } }
-    `;
-    element.appendChild(style);
+
     html2pdf().set({
       margin: 0.5,
-      filename: `${title.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}.pdf`,
+      filename: `Results_${selectedClass || 'All'}_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' },
+      jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' },
     }).from(element).save();
-  }, []);
+  }, [selectedClass]);
 
-  const openAddModal = () => {
-    setModalMode('add');
-    setModalResult(null);
-    setFormState({});
-    setShowResultModal(true);
-  };
-  const openEditModal = (result: ResultRow) => {
-    setModalMode('edit');
-    setModalResult(result);
-    setFormState(result);
-    setShowResultModal(true);
-  };
-  const openDeleteConfirm = (id: string) => {
-    setDeleteId(id);
-    setShowDeleteConfirm(true);
-  };
-  const closeModals = () => {
-    setShowResultModal(false);
-    setShowDeleteConfirm(false);
-    setModalResult(null);
-    setDeleteId(null);
-    setFormState({});
-  };
-  const handleResultSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this result?')) return;
     try {
-      if (modalMode === 'add') {
-        await axios.post(`${BACKEND_URL}/results`, formState);
-        toast({ title: 'Result added!' });
-      } else if (modalMode === 'edit' && modalResult?.id) {
-        await axios.put(`${BACKEND_URL}/results/${modalResult.id}`, formState);
-        toast({ title: 'Result updated!' });
-      }
-      closeModals();
+      await deleteDoc(doc(db, 'exam-results', id));
+      toast({ title: 'Success', description: 'Result entry deleted.' });
       fetchResults();
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to save result.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    setIsSubmitting(true);
-    try {
-      await axios.delete(`${BACKEND_URL}/results/${deleteId}`);
-      toast({ title: 'Result deleted!' });
-      closeModals();
-      fetchResults();
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to delete result.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  const handleAddResult = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addClass || !selectedStudent || !(isAddingNewExam ? addExamName : addExam)) {
-      toast({ variant: 'destructive', title: 'Missing fields', description: 'Class, student, and exam are required.' });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const subjectsObj: Record<string, string> = {};
-      addSubjects.forEach(sub => subjectsObj[sub] = addMarks[sub] || '');
-      const payload = {
-        studentId: selectedStudent.id,
-        studentName: selectedStudent.name,
-        class: addClass,
-        exam: isAddingNewExam ? addExamName : addExam,
-        subjects: subjectsObj,
-        total: addTotal,
-        rank: addRank
-      };
-      await axios.post(`${BACKEND_URL}/results`, payload);
-      toast({ title: 'Result added!' });
-      setShowResultModal(false);
-      setAddClass('');
-      setSelectedStudent(null);
-      setAddExam('');
-      setAddSubjects([]);
-      setAddMarks({});
-      setAddRank('');
-      setAddTotal('');
-      setIsAddingNewExam(false);
-      setAddExamName('');
-      fetchResults();
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to add result.' });
-    } finally {
-      setIsSubmitting(false);
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete.' });
     }
   };
 
   return (
-    <div className="p-2 sm:p-4 max-w-7xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4 text-center">School Results</h2>
-      {error && <div className="mb-4 p-2 bg-red-100 text-red-700 rounded">{error}</div>}
-      <div className="flex flex-col sm:flex-row gap-2 mb-4">
-        <div className="flex-1 min-w-[140px]">
-          <label className="block text-sm font-medium mb-1">Class</label>
-          <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedExam(''); }} className="w-full border rounded p-2">
-            <option value="">All Classes</option>
-            {CLASSES.map((cls, index) => <option key={index} value={cls}>{cls}</option>)}
-          </select>
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 bg-gray-50/50 min-h-screen">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-blue-50 rounded-xl">
+            <Trophy className="h-8 w-8 text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">School Results</h1>
+            <p className="text-gray-500 text-sm">Historical performance data and centralized merit ranking</p>
+          </div>
         </div>
-        <div className="flex-1 min-w-[140px]">
-          <label className="block text-sm font-medium mb-1">Exam</label>
-          <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} className="w-full border rounded p-2" disabled={!selectedClass}>
-            <option value="">All Exams</option>
-            {availableExams.map((exam, index) => <option key={index} value={exam}>{exam}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="overflow-x-auto rounded shadow bg-white">
-        <div className="flex flex-col sm:flex-row justify-between items-center p-2 gap-2">
-          <span className="font-semibold">Results</span>
-          <button
-            type="button"
-            className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
-            onClick={() => generateResultsPDF(results, 'School Results')}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'table' ? 'grid' : 'table')}
+            className="bg-white"
+          >
+            {viewMode === 'table' ? <LayoutGrid className="h-4 w-4 mr-2" /> : <List className="h-4 w-4 mr-2" />}
+            {viewMode === 'table' ? 'Grid View' : 'Table View'}
+          </Button>
+          <Button
+            onClick={() => generateResultsPDF(results)}
+            className="bg-blue-600 shadow-md hover:shadow-lg transition-all"
             disabled={results.length === 0}
           >
-            Download PDF
-          </button>
-          {user && (user.role === 'admin' || user.role === 'staff') && (
-            <Button className="bg-green-600 text-white px-3 py-1 rounded" onClick={openAddModal}>Add Result</Button>
-          )}
+            <Download className="h-4 w-4 mr-2" />
+            Export PDF
+          </Button>
         </div>
-        <ResultsTable parsedResults={results} loadingResults={loadingResults} openEditModal={openEditModal} openDeleteConfirm={openDeleteConfirm} userRole={user?.role} />
       </div>
-      {showResultModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="w-full h-full flex items-center justify-center">
-            <form
-              onSubmit={modalMode === 'add' ? handleAddResult : handleResultSubmit}
-              className="bg-white rounded-lg shadow-lg w-full max-w-md sm:max-w-lg md:max-w-xl mx-2 p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto max-h-[90vh]"
-              style={{ minWidth: 0 }}
-            >
-              <h2 className="text-xl font-bold mb-2 text-center">{modalMode === 'add' ? 'Add Result' : 'Edit Result'}</h2>
-              <div className="flex flex-col gap-2">
-                {modalMode === 'add' ? (
-                  <>
-                    <label className="text-sm font-medium">Class</label>
-                    <select className="border p-2 rounded" value={addClass} onChange={e => { setAddClass(e.target.value); setAddExam(''); setSelectedStudent(null); }} required>
-                      <option value="">Select Class</option>
-                      {CLASSES.map(cls => <option key={cls} value={cls}>{cls}</option>)}
-                    </select>
-                    <label className="text-sm font-medium">Student</label>
-                    <select className="border p-2 rounded" value={selectedStudent?.id || ''} onChange={e => setSelectedStudent(students.find(s => s.id === e.target.value))} required disabled={!addClass}>
-                      <option value="">Select Student</option>
-                      {students.map(student => (
-                        <option key={student.id} value={student.id}>{student.name} ({student.id})</option>
-                      ))}
-                    </select>
-                    {selectedStudent && (
-                      <>
-                        <label className="text-sm font-medium">Exam</label>
-                        <select className="border p-2 rounded" value={addExam} onChange={e => {
-                          if (e.target.value === '__add_new__') {
-                            setAddExam('');
-                            setIsAddingNewExam(true);
-                          } else {
-                            setAddExam(e.target.value);
-                            setIsAddingNewExam(false);
-                            setAddExamName('');
-                          }
-                        }} required>
-                          <option value="">Select Exam</option>
-                          {availableExams.map(exam => (
-                            <option key={exam} value={exam}>{exam}</option>
-                          ))}
-                          <option value="__add_new__">+ Add new</option>
-                        </select>
-                        {isAddingNewExam && (
-                          <input className="border p-2 rounded mt-2" placeholder="New exam name" value={addExamName} onChange={e => setAddExamName(e.target.value)} required />
-                        )}
-                      </>
-                    )}
-                    {addSubjects.length > 0 ? (
-                      addSubjects.map(subject => (
-                        <div key={subject} className="flex items-center gap-2">
-                          <label className="w-24">{subject}</label>
-                          <input
-                            className="border p-2 rounded flex-1"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={addMarks[subject] || ''}
-                            onChange={e => setAddMarks(m => ({ ...m, [subject]: e.target.value }))}
-                            required
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-gray-500">No subjects found for this class/exam.</div>
-                    )}
-                    <input className="border p-2 rounded" placeholder="Total" value={addTotal} disabled readOnly />
-                    <input className="border p-2 rounded" placeholder="Rank" value={addRank} onChange={e => setAddRank(e.target.value)} required />
-                  </>
-                ) : (
-                  <>
-                    {formState.subjects && Object.keys(formState.subjects).length > 0 ? (
-                      Object.entries(formState.subjects).map(([subject, mark]) => (
-                        <div key={subject} className="flex items-center gap-2">
-                          <label className="w-24">{subject}</label>
-                          <input
-                            className="border p-2 rounded flex-1"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={mark || ''}
-                            onChange={e => setFormState(f => ({
-                              ...f,
-                              subjects: { ...f.subjects, [subject]: e.target.value }
-                            }))}
-                            required
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-gray-500">No subjects found for this result.</div>
-                    )}
-                    <input className="border p-2 rounded" placeholder="Total" value={formState.total || ''} disabled readOnly />
-                    <input className="border p-2 rounded" placeholder="Rank" value={formState.rank || ''} onChange={e => setFormState(f => ({ ...f, rank: e.target.value }))} required />
-                  </>
-                )}
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                <Button type="submit" className="flex-1 bg-blue-600 text-white" disabled={isSubmitting}>{modalMode === 'add' ? 'Add' : 'Update'}</Button>
-                <Button type="button" variant="outline" className="flex-1" onClick={closeModals}>Cancel</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-xs mx-2">
-            <h2 className="text-lg font-bold mb-2">Confirm Delete</h2>
-            <p>Are you sure you want to delete this result?</p>
-            <div className="flex gap-2 mt-4">
-              <Button variant="destructive" onClick={handleDelete} disabled={isSubmitting}>Delete</Button>
-              <Button variant="outline" onClick={closeModals}>Cancel</Button>
+
+      <Card className="border-none shadow-sm">
+        <CardHeader className="bg-white border-b border-gray-100 py-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Class Filter</label>
+              <Select value={selectedClass} onValueChange={setSelectedClass}>
+                <SelectTrigger className="bg-white border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-3 w-3 text-blue-500" />
+                    <SelectValue placeholder="All Classes" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="null_all">All Classes</SelectItem>
+                  {CLASSES.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Exam Filter</label>
+              <Select value={selectedExam} onValueChange={setSelectedExam} disabled={!selectedClass}>
+                <SelectTrigger className="bg-white border-gray-200">
+                  <SelectValue placeholder="Select Exam" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="null_all">All Exams</SelectItem>
+                  {availableExams.map(ex => <SelectItem key={ex} value={ex}>{ex}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={() => fetchResults()} className="w-full md:w-auto">
+                <Search className="h-4 w-4 mr-2" />
+                Apply Filters
+              </Button>
             </div>
           </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <AnimatePresence mode="wait">
+            {loadingResults ? (
+              <div className="h-64 flex flex-col items-center justify-center gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
+                <p className="text-gray-400 text-sm animate-pulse">Fetching academic data...</p>
+              </div>
+            ) : results.length === 0 ? (
+              <div className="h-64 flex flex-col items-center justify-center gap-2">
+                <div className="p-4 bg-gray-50 rounded-full text-gray-300">
+                  <Info className="h-10 w-10" />
+                </div>
+                <p className="text-gray-500 font-medium">No results found for selection</p>
+                <p className="text-gray-400 text-xs text-center max-w-xs">
+                  Try adjusting your filters or ensure results have been published in Exam Management.
+                </p>
+              </div>
+            ) : viewMode === 'table' ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="overflow-x-auto"
+              >
+                <Table>
+                  <TableHeader className="bg-gray-50/50">
+                    <TableRow>
+                      <TableHead className="py-4">Student</TableHead>
+                      <TableHead>Academic Info</TableHead>
+                      <TableHead>Subjects & Marks</TableHead>
+                      <TableHead className="text-center">Score</TableHead>
+                      <TableHead className="text-center">Rank</TableHead>
+                      {(user?.role === 'admin' || user?.role === 'staff') && <TableHead className="text-right">Actions</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {results.map(row => (
+                      <TableRow key={row.id} className="group hover:bg-white transition-colors">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-sm">
+                              {row.studentName.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900 leading-none">{row.studentName}</p>
+                              <p className="text-[10px] font-mono text-gray-400 mt-1.5 bg-gray-100 px-1.5 py-0.5 rounded tracking-wider">{row.studentId}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px] bg-blue-50/50 text-blue-700 border-blue-100 mb-1 block w-fit">
+                            {row.class}
+                          </Badge>
+                          <p className="text-xs text-gray-500 font-medium truncate max-w-[120px]">{row.exam}</p>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1.5 max-w-[300px]">
+                            {Object.entries(row.subjects || {}).map(([sub, mark]) => (
+                              <div key={sub} className="flex flex-col border border-gray-100 rounded-lg overflow-hidden min-w-[60px]">
+                                <span className="bg-gray-50 px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase text-center border-b border-gray-100">{sub}</span>
+                                <span className="px-2 py-1 text-xs font-bold text-center bg-white text-gray-700">{mark}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-lg font-black text-gray-900">{row.total}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {row.rank && (
+                            <div className="inline-flex flex-col items-center">
+                              <Badge className={cn(
+                                "text-[11px] font-black uppercase px-2.5 shadow-sm",
+                                row.rank.toLowerCase().includes('1st') ? "bg-amber-400 hover:bg-amber-500" :
+                                  row.rank.toLowerCase().includes('2nd') ? "bg-slate-400 hover:bg-slate-500" :
+                                    row.rank.toLowerCase().includes('3rd') ? "bg-amber-700 hover:bg-amber-800" : "bg-blue-600"
+                              )}>
+                                {row.rank}
+                              </Badge>
+                            </div>
+                          )}
+                        </TableCell>
+                        {(user?.role === 'admin' || user?.role === 'staff') && (
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(row.id)}
+                              className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6"
+              >
+                {results.map(row => (
+                  <Card key={row.id} className="group relative overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-300">
+                    <div className="absolute top-0 right-0 p-3">
+                      <Badge className="bg-blue-600/10 text-blue-700 border-none px-3 font-black">{row.rank}</Badge>
+                    </div>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-700 flex items-center justify-center text-white text-xl font-black shadow-lg">
+                          {row.studentName.charAt(0)}
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">{row.studentName}</CardTitle>
+                          <CardDescription className="font-mono text-[10px]">{row.studentId} • {row.class}</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="p-3 bg-gray-50 rounded-xl space-y-2">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{row.exam}</p>
+                        <div className="flex justify-between items-end">
+                          <span className="text-gray-500 text-sm">Aggregate Marks</span>
+                          <span className="text-3xl font-black text-gray-900">{row.total}</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {Object.entries(row.subjects || {}).slice(0, 6).map(([sub, mark]) => (
+                          <div key={sub} className="bg-white border border-gray-100 rounded-lg p-2 flex flex-col items-center">
+                            <span className="text-[9px] text-gray-400 font-bold truncate w-full text-center">{sub}</span>
+                            <span className="text-sm font-bold text-blue-600">{mark}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </CardContent>
+      </Card>
+
+      <div className="bg-blue-600 rounded-2xl p-8 text-white relative overflow-hidden shadow-xl">
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="text-center md:text-left">
+            <h3 className="text-2xl font-bold mb-2">Need a Physical Transcript?</h3>
+            <p className="text-blue-100 max-w-lg">
+              Students can download their official marksheets and certificates from the student portal using their registered credentials.
+            </p>
+          </div>
+          <Button className="bg-white text-blue-600 hover:bg-blue-50 font-bold px-8 shadow-lg">
+            Go to Portal
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
-        )}
+        {/* Background blobs */}
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-blue-500 rounded-full blur-3xl opacity-50"></div>
+        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-indigo-500 rounded-full blur-3xl opacity-50"></div>
+      </div>
     </div>
   );
 };

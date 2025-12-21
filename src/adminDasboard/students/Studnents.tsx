@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Trash, Edit, Download, X, Settings, User, Search } from 'lucide-react';
+import { Plus, Trash, Edit, Download, X, Settings, User, Search, UserMinus, ArrowUpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
@@ -387,6 +387,114 @@ const Students = () => {
     }
   };
 
+  // Handle remove duplicates
+  const handleRemoveDuplicates = async () => {
+    if (!window.confirm("Are you sure you want to remove duplicate students based on Name and Phone Number?")) return;
+
+    setIsLoading(true);
+    try {
+      const q = query(collection(db, 'students'));
+      const snapshot = await getDocs(q);
+      const allStudents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+
+      const seen = new Set();
+      const duplicateIds: string[] = [];
+
+      allStudents.forEach(student => {
+        // Use Name and Number as the unique key
+        const key = `${student.name.trim().toLowerCase()}-${student.number.trim()}`;
+        if (seen.has(key)) {
+          duplicateIds.push(student.id);
+        } else {
+          seen.add(key);
+        }
+      });
+
+      if (duplicateIds.length === 0) {
+        toast({
+          title: "Info",
+          description: "No duplicate students found.",
+        });
+        return;
+      }
+
+      for (const id of duplicateIds) {
+        await deleteDoc(doc(db, 'students', id));
+      }
+
+      toast({
+        title: "Success",
+        description: `Removed ${duplicateIds.length} duplicate records.`,
+      });
+      fetchStudents();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to remove duplicates",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle promote students (Year & Class increment)
+  const handlePromoteStudents = async () => {
+    const fromYear = window.prompt("Enter current academic year to promote from (e.g., 2025):");
+    if (!fromYear) return;
+
+    const nextYear = String(Number(fromYear) + 1);
+
+    if (!window.confirm(`Promote all students from year ${fromYear} to ${nextYear}? Classes will be advanced automatically based on system order.`)) return;
+
+    setIsLoading(true);
+    try {
+      const q = query(collection(db, 'students'), where('academicYear', '==', fromYear));
+      const snapshot = await getDocs(q);
+      const studentsToPromote = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+
+      if (studentsToPromote.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `No students found for the academic year ${fromYear}`,
+        });
+        return;
+      }
+
+      let promotedCount = 0;
+      for (const student of studentsToPromote) {
+        const currentClassIndex = CLASS_OPTIONS.indexOf(student.class);
+        let nextClass = student.class;
+
+        // Advance to next class if not at the end of the sequence
+        if (currentClassIndex !== -1 && currentClassIndex < CLASS_OPTIONS.length - 1) {
+          nextClass = CLASS_OPTIONS[currentClassIndex + 1];
+        }
+
+        await updateDoc(doc(db, 'students', student.id), {
+          academicYear: nextYear,
+          class: nextClass
+        });
+        promotedCount++;
+      }
+
+      toast({
+        title: "Success",
+        description: `Successfully promoted ${promotedCount} students to year ${nextYear}.`,
+      });
+      fetchStudents();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to promote students",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Effects with performance optimization
   useEffect(() => {
     fetchStudents();
@@ -408,11 +516,27 @@ const Students = () => {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={handleRemoveDuplicates}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+              title="Remove Duplicate Student Records"
+            >
+              <UserMinus size={20} />
+              <span className="hidden sm:inline">Delete Duplicates</span>
+            </button>
+            <button
+              onClick={handlePromoteStudents}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              title="Promote Students to Next Year & Class"
+            >
+              <ArrowUpCircle size={20} />
+              <span className="hidden sm:inline">Promote Students</span>
+            </button>
+            <button
               onClick={handleExportToCSV}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
               <Download size={20} />
-              <span>Export CSV</span>
+              <span className="hidden sm:inline">Export CSV</span>
             </button>
             <button
               onClick={() => {
@@ -436,7 +560,7 @@ const Students = () => {
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               <Plus size={20} />
-              <span>Add Student</span>
+              <span className="hidden sm:inline">Add Student</span>
             </button>
           </div>
         </header>

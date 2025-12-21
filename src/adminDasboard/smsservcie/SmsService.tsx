@@ -1,52 +1,42 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiInfo, FiClipboard, FiSend, FiUsers, FiDollarSign, FiWifi, FiX } from 'react-icons/fi';
-
+import {
+  Send, Users, DollarSign, Wifi, X, Info,
+  Search, Clipboard, CheckCircle2, AlertCircle,
+  MessageSquare, LayoutGrid, List, FileText,
+  ChevronRight, ArrowRight, Download, Filter,
+  Phone, User, Hash, History, Settings
+} from 'lucide-react';
 import axios from 'axios';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { toast } from 'sonner';
-import 'jspdf-autotable';
-import Loading from '../../components/loader/Loading';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+// @ts-ignore
 import classesData from '@/lib/classes.json';
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
-console.log('Backend URL:', BACKEND_URL);
+const CLASS_OPTIONS = (classesData as { name: string }[]).map(cls => cls.name);
 
 interface Student {
-  id?: string;
+  id: string;
   name: string;
   number: string;
   class: string;
-  description?: string;
-  englishName: string;
-  motherName: string;
-  fatherName: string;
-  photoUrl?: string;
+  englishName?: string;
+  motherName?: string;
+  fatherName?: string;
+  studentId: string;
 }
-
-const CLASS_OPTIONS = (classesData as { name: string }[]).map(cls => cls.name);
-
-const ERROR_CODES: { [key: number]: string } = {
-  202: "SMS Submitted Successfully",
-  1001: "Invalid Number",
-  1002: "Sender ID not correct or disabled",
-  1003: "Please fill all required fields or contact your System Administrator",
-  1005: "Internal Error",
-  1006: "Balance Validity Not Available",
-  1007: "Balance Insufficient",
-  1011: "User ID not found",
-  1012: "Masking SMS must be sent in Bengali",
-  1013: "Sender ID has not found Gateway by API key",
-  1014: "Sender Type Name not found using this sender by API key",
-  1015: "Sender ID has not found any valid Gateway by API key",
-  1016: "Sender Type Name Active Price Info not found by this sender ID",
-  1017: "Sender Type Name Price Info not found by this sender ID",
-  1018: "The Owner of this account is disabled",
-  1019: "The Sender Type Name Price of this account is disabled",
-  1020: "The parent of this account is not found",
-  1021: "The parent active Sender Type Name price of this account is not found",
-  1031: "Your Account Not Verified, Please Contact Administrator",
-  1032: "IP Not whitelisted"
-};
 
 const PLACEHOLDERS = [
   { key: '{student_name}', label: 'Student Name' },
@@ -56,770 +46,483 @@ const PLACEHOLDERS = [
   { key: '{father_name}', label: 'Father Name' },
 ];
 
-const SMSService = () => {
+const SMS_LIMIT_GSM = 160;
+const SMS_LIMIT_UNICODE = 70;
+
+const SmsService: React.FC = () => {
   const [message, setMessage] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedNumbers, setSelectedNumbers] = useState<string[]>([]);
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'error'>('checking');
-  const [smsRate] = useState(0.35); // Taka per SMS part
-  const [totalCost, setTotalCost] = useState(0);
-  const [ipAddress, setIpAddress] = useState('');
   const [accountBalance, setAccountBalance] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(50);
   const [isLoading, setIsLoading] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [showTutorial, setShowTutorial] = useState(false);
+  const [logs, setLogs] = useState<{ time: string, msg: string, type: 'info' | 'error' | 'success' }[]>([]);
+  const [activeTab, setActiveTab] = useState('compose');
 
-  const log = (message: string) => {
-    console.log(`[SMSService] ${message}`);
-    setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${message}`].slice(-10));
-  };
+  const addLog = useCallback((msg: string, type: 'info' | 'error' | 'success' = 'info') => {
+    setLogs(prev => [{
+      time: new Date().toLocaleTimeString(),
+      msg,
+      type
+    }, ...prev].slice(0, 50));
+  }, []);
 
-  const insertPlaceholder = (placeholder: string) => {
-    setMessage(prev => `${prev}${placeholder} `);
-  };
-
+  // Fetch initial data (Balance & IP)
   useEffect(() => {
     const fetchInitialData = async () => {
-      setIsLoading(true);
-      log('Fetching initial data...');
+      addLog('Checking gateway connection...', 'info');
       try {
-        const ipResponse = await fetch('https://api.ipify.org?format=json');
-        const ipData = await ipResponse.json();
-        setIpAddress(ipData.ip);
-
         const balanceResponse = await axios.get(`${BACKEND_URL}/getBalance`);
-        if (balanceResponse.status === 200 && balanceResponse.data.balance !== undefined) {
+        if (balanceResponse.data && balanceResponse.data.balance !== undefined) {
           setApiStatus('connected');
           setAccountBalance(parseFloat(balanceResponse.data.balance));
+          addLog('Gateway connected successfully', 'success');
         } else {
           setApiStatus('error');
-          log(`SMS provider error: ${balanceResponse.data.error || 'Unknown error'}`);
+          addLog('Failed to fetch gateway balance', 'error');
         }
       } catch (error) {
         setApiStatus('error');
-        log(`Initialization error: ${error instanceof Error ? error.message : String(error)}`);
+        addLog(`Gateway error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      }
+    };
+    fetchInitialData();
+  }, [addLog]);
+
+  // Fetch students from Firestore
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!selectedClass) {
+        setStudents([]);
+        return;
+      }
+      setIsLoading(true);
+      addLog(`Loading students for class: ${selectedClass}`, 'info');
+      try {
+        const q = query(
+          collection(db, 'students'),
+          where('class', '==', selectedClass),
+          orderBy('name')
+        );
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Student));
+        setStudents(data);
+        addLog(`Successfully loaded ${data.length} students from Firestore`, 'success');
+      } catch (error) {
+        addLog(`Firestore error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+        toast.error('Failed to load students');
       } finally {
         setIsLoading(false);
       }
     };
-    fetchInitialData();
-  }, []);
+    fetchStudents();
+  }, [selectedClass, addLog]);
 
-  const fetchStudentsByClass = useCallback(async () => {
-    if (!selectedClass) return;
-    setIsLoading(true);
-    log(`Fetching students for class: ${selectedClass}`);
-    try {
-      const response = await axios.get(`${BACKEND_URL}/students`, {
-        params: {
-          page: currentPage - 1,
-          limit: itemsPerPage,
-          class: selectedClass,
-        },
-      });
-      const { students: fetchedStudents, total } = response.data;
-      setStudents(fetchedStudents.map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        number: s.number,
-        class: s.class,
-        description: s.description,
-        englishName: s.englishName,
-        motherName: s.motherName,
-        fatherName: s.fatherName,
-        photoUrl: s.photoUrl,
-      })));
-      setTotalStudents(total);
-      log(`Fetched ${fetchedStudents.length} of ${total} students`);
-    } catch (error) {
-      log(`Error fetching students: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedClass, currentPage, itemsPerPage]);
-
-  useEffect(() => {
-    fetchStudentsByClass();
-  }, [fetchStudentsByClass]);
-
-  const filteredStudents = students.filter(student =>
+  const filteredStudents = useMemo(() => students.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.number.includes(searchTerm)
-  );
+    (student.number && student.number.includes(searchTerm)) ||
+    (student.studentId && student.studentId.includes(searchTerm))
+  ), [students, searchTerm]);
 
-  const handleNumberSelection = (number: string) => {
-    setSelectedNumbers(prev =>
-      prev.includes(number) ? prev.filter(n => n !== number) : [...prev, number]
-    );
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const numbers = filteredStudents.map(s => s.number).filter(Boolean);
+      setSelectedNumbers(numbers);
+    } else {
+      setSelectedNumbers([]);
+    }
   };
 
-  const generatePersonalizedMessage = (student: Student) => {
-    let personalizedMessage = message;
-    personalizedMessage = personalizedMessage.replace('{student_name}', student.name);
-    personalizedMessage = personalizedMessage.replace('{english_name}', student.englishName);
-    personalizedMessage = personalizedMessage.replace('{class}', student.class);
-    personalizedMessage = personalizedMessage.replace('{mother_name}', student.motherName);
-    personalizedMessage = personalizedMessage.replace('{father_name}', student.fatherName);
-    return personalizedMessage;
+  const handleCheckStudent = (number: string, checked: boolean) => {
+    if (checked) {
+      setSelectedNumbers(prev => [...prev, number]);
+    } else {
+      setSelectedNumbers(prev => prev.filter(n => n !== number));
+    }
   };
 
-  useEffect(() => {
-    const calculateCost = () => {
-      const gsm7BitExChars = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!\"#$%&'()*+,\-./:;<=>?-siÄÖÑÜ§¿äöñüà^{}\[~\]|€]+$/;
+  const generatePersonalizedMessage = (student: Student, template: string) => {
+    let msg = template;
+    msg = msg.replace(/{student_name}/g, student.name || '');
+    msg = msg.replace(/{english_name}/g, student.englishName || '');
+    msg = msg.replace(/{class}/g, student.class || '');
+    msg = msg.replace(/{mother_name}/g, student.motherName || '');
+    msg = msg.replace(/{father_name}/g, student.fatherName || '');
+    return msg;
+  };
 
-      const maxLength = selectedNumbers.reduce((max, number) => {
-        const student = students.find(s => s.number === number);
-        if (student) {
-          const personalizedMessage = generatePersonalizedMessage(student);
-          const isGSM7 = gsm7BitExChars.test(personalizedMessage);
-          return Math.max(max, isGSM7 ? 160 : 70);
-        }
-        return max;
-      }, 160);
+  const isUnicode = (text: string) => {
+    const gsm7BitExChars = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!\"#$%&'()*+,\-./:;<=>?-siÄÖÑÜ§¿äöñüà^{}\[~\]|€]+$/;
+    return !gsm7BitExChars.test(text);
+  };
 
-      const maxMessageLength = selectedNumbers.reduce((max, number) => {
-        const student = students.find(s => s.number === number);
-        if (student) {
-          const personalizedMessage = generatePersonalizedMessage(student);
-          return Math.max(max, personalizedMessage.length);
-        }
-        return max;
-      }, message.length);
+  const smsMetrics = useMemo(() => {
+    if (!message) return { parts: 0, totalSms: 0, cost: 0 };
 
-      const parts = Math.ceil(maxMessageLength / maxLength);
-      const cost = parts * selectedNumbers.length * smsRate;
-      setTotalCost(cost);
+    // We base the limit on the "worst case" (unicode if any student name is unicode or message is unicode)
+    const unicode = isUnicode(message);
+    const limitPerSms = unicode ? SMS_LIMIT_UNICODE : SMS_LIMIT_GSM;
+
+    let totalParts = 0;
+    selectedNumbers.forEach(num => {
+      const student = students.find(s => s.number === num);
+      if (student) {
+        const personalized = generatePersonalizedMessage(student, message);
+        totalParts += Math.ceil(personalized.length / limitPerSms);
+      } else {
+        totalParts += Math.ceil(message.length / limitPerSms);
+      }
+    });
+
+    return {
+      parts: totalParts,
+      totalSms: selectedNumbers.length,
+      cost: totalParts * 0.35 // Assuming 0.35 BDT per part
     };
-    calculateCost();
-  }, [message, selectedNumbers, smsRate, students]);
+  }, [message, selectedNumbers, students]);
 
-  const sendSMS = async () => {
-    if (!selectedNumbers.length || !message) {
-      toast('Please select recipients and enter a message!');
+  const handleSendSms = async () => {
+    if (selectedNumbers.length === 0 || !message) {
+      toast.error('Select recipients and enter a message');
       return;
     }
-    if (totalCost > (accountBalance || 0)) {
-      alert('Insufficient balance!');
+
+    if (accountBalance !== null && smsMetrics.cost > accountBalance) {
+      toast.error('Insufficient gateway balance');
       return;
     }
 
     setIsLoading(true);
+    addLog(`Initiating bulk send to ${selectedNumbers.length} recipients...`, 'info');
+
+    let successCount = 0;
+    let failCount = 0;
+
     try {
-      const promises = selectedNumbers.map(async (number) => {
-        const student = students.find(s => s.number === number);
-        if (!student) return;
-        const personalizedMessage = generatePersonalizedMessage(student);
-        const response = await axios.post(`${BACKEND_URL}/sendSMS`, {
-          number,
-          message: personalizedMessage,
+      // For heavy bulk operations, we process in chunks or handle all promises
+      const chunk = async (nums: string[]) => {
+        const promises = nums.map(async (number) => {
+          const student = students.find(s => s.number === number);
+          const personalizedMessage = student ? generatePersonalizedMessage(student, message) : message;
+
+          try {
+            const response = await axios.post(`${BACKEND_URL}/sendSMS`, {
+              number,
+              message: personalizedMessage,
+            });
+            if (response.data.response_code === 202) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          } catch (err) {
+            failCount++;
+          }
         });
-        return response.data;
-      });
+        await Promise.all(promises);
+      };
 
-      const results = await Promise.all(promises);
-      const allSuccessful = results.every(result => result?.response_code === 202);
-
-      if (allSuccessful) {
-        alert('All SMS sent successfully!');
-        setMessage('');
-        setSelectedNumbers([]);
-        setAccountBalance(prev => (prev ? prev - totalCost : null));
-        log('All SMS sent successfully');
-      } else {
-        const errors = results.map((result, index) =>
-          result?.response_code !== 202
-            ? `SMS to ${selectedNumbers[index]} failed: ${ERROR_CODES[result?.response_code] || 'Unknown error'}`
-            : null
-        ).filter(Boolean);
-        alert(`Some SMS failed:\n${errors.join('\n')}`);
-        log(`Some SMS failed: ${errors.join(', ')}`);
+      // Process in small batches of 5 to avoid overwhelming the gateway/server
+      const batchSize = 5;
+      for (let i = 0; i < selectedNumbers.length; i += batchSize) {
+        await chunk(selectedNumbers.slice(i, i + batchSize));
       }
+
+      if (successCount > 0) {
+        toast.success(`Successfully sent ${successCount} messages`);
+        addLog(`Batch complete. Success: ${successCount}, Failed: ${failCount}`, successCount > 0 ? 'success' : 'error');
+        // Refresh balance after delay
+        setTimeout(async () => {
+          const balanceRes = await axios.get(`${BACKEND_URL}/getBalance`);
+          if (balanceRes.data.balance) setAccountBalance(parseFloat(balanceRes.data.balance));
+        }, 2000);
+      } else {
+        toast.error('Bulk sending failed');
+      }
+
+      if (failCount === 0) {
+        setSelectedNumbers([]);
+        setMessage('');
+      }
+
     } catch (error) {
-      alert('Failed to send SMS.');
-      log(`SMS sending error: ${error instanceof Error ? error.message : String(error)}`);
+      addLog(`Critical error during bulk send: ${error instanceof Error ? error.message : 'Unknown'}`, 'error');
+      toast.error('Bulk sending interrupted');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const glassStyle = {
-    background: 'rgba(255, 255, 255, 0.9)',
-    backdropFilter: 'blur(10px)',
-    borderRadius: '16px',
-    border: '1px solid rgba(255, 255, 255, 0.3)',
-  };
-
-  const AnimatedGradient = () => (
-    <motion.div
-      className="absolute inset-0 z-0"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 1 }}
-    >
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-100 via-green-100 to-purple-100 opacity-50 animate-gradient-x" />
-    </motion.div>
-  );
-
-  const TutorialOverlay = () => (
-    <motion.div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      <div style={glassStyle} className="p-8 max-w-2xl relative">
-        <button
-          onClick={() => setShowTutorial(false)}
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
-        >
-          <FiX size={24} />
-        </button>
-        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-          <FiInfo className="text-blue-500" /> SMS Dashboard Guide
-        </h2>
-        <div className="space-y-6">
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">1</div>
-            <div>
-              <h3 className="font-semibold">Select a Class</h3>
-              <p className="text-gray-600">Choose the student class from the dropdown to load recipients</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">2</div>
-            <div>
-              <h3 className="font-semibold">Craft Your Message</h3>
-              <p className="text-gray-600">Use placeholders to personalize messages for each student</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">3</div>
-            <div>
-              <h3 className="font-semibold">Review & Send</h3>
-              <p className="text-gray-600">Check estimated costs and balance before sending</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-
-  const pasteFromClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      setMessage(prev => prev + text);
-    } catch (error) {
-      alert('Failed to paste from clipboard.');
-      log(`Clipboard paste error: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   return (
-    <div className="relative min-h-screen">
-      <AnimatedGradient />
-      {isLoading && <div>Loaidng..</div>} {/* Add Loading component here */}
-      {showTutorial && <TutorialOverlay />}
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative z-10 p-6 max-w-6xl mx-auto"
-      >
-        {/* Status Ribbon */}
-        <motion.div
-          style={glassStyle}
-          className="flex flex-wrap gap-4 items-center justify-between p-4 mb-8 shadow-lg"
-        >
-          <div className="flex items-center gap-2">
-            <FiWifi className={`text-lg ${apiStatus === 'connected' ? 'text-green-500' : 'text-red-500'}`} />
-            <span className="font-medium">Connection: </span>
-            <span className={`${apiStatus === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
-              {apiStatus === 'connected' ? 'Secure Connection' : 'Connection Error'}
-            </span>
+    <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 space-y-8">
+      {/* Header & Stats */}
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-100">
+              <MessageSquare className="h-8 w-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">SMS Command Center</h1>
+              <p className="text-slate-500 text-sm">Automated student notifications and bulk alerts</p>
+            </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <FiDollarSign className="text-green-500" />
-            <span className="font-medium">Balance: </span>
-            <span className="font-bold text-green-700">
-              {accountBalance !== null ? `${accountBalance.toFixed(2)} টাকা` : '...'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <FiClipboard className="text-blue-500" />
-            <span className="font-medium">Recipients: </span>
-            <span className="font-bold text-blue-700">{selectedNumbers.length}</span>
-          </div>
-        </motion.div>
-
-        {/* Message Composition */}
-        <motion.div
-          style={glassStyle}
-          className="mb-8 p-6 shadow-lg"
-          whileHover={{ scale: 1.005 }}
-        >
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <FiSend className="text-blue-500" /> Compose Message
-          </h3>
-          <textarea
-            className="w-full p-4 border rounded-xl focus:ring-2 focus:ring-blue-300 bg-white/50 resize-none min-h-[150px]"
-            placeholder="✍️ Start typing your message here... Use placeholders below to personalize!"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            disabled={isLoading}
-          />
-
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-            {PLACEHOLDERS.map(({ key, label }) => (
-              <motion.button
-                key={key}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => insertPlaceholder(key)}
-                className="p-2 bg-white border rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center text-sm"
-                disabled={isLoading}
-              >
-                <span className="text-blue-600">{label}</span>
-              </motion.button>
-            ))}
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="bg-blue-100 px-2 py-1 rounded">Characters: {message.length}</span>
-              <span className="bg-green-100 px-2 py-1 rounded">
-                SMS Parts: {Math.ceil(
-                  selectedNumbers.reduce((max, number) => {
-                    const student = students.find(s => s.number === number);
-                    if (student) {
-                      const personalizedMessage = generatePersonalizedMessage(student);
-                      return Math.max(max, personalizedMessage.length);
-                    }
-                    return max;
-                  }, message.length) / 160
-                )}
-              </span>
-              <span className="bg-purple-100 px-2 py-1 rounded">
-                Total Cost: {totalCost.toFixed(2)} টাকা
+          <div className="flex flex-wrap items-center gap-3">
+            <div className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-2xl border text-sm font-bold transition-all",
+              apiStatus === 'connected' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-red-50 text-red-600 border-red-100"
+            )}>
+              <span className={cn("h-2 w-2 rounded-full animate-pulse", apiStatus === 'connected' ? "bg-emerald-500" : "bg-red-500")} />
+              {apiStatus === 'connected' ? "Gateway Active" : "Gateway Offline"}
+            </div>
+            <div className="flex items-center gap-3 px-5 py-2.5 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-100 font-black shadow-sm">
+              <DollarSign className="h-5 w-5" />
+              <span className="text-lg">
+                {accountBalance !== null ? `${accountBalance.toFixed(2)} ৳` : '---'}
               </span>
             </div>
-            <button
-              onClick={pasteFromClipboard}
-              className="flex items-center gap-1 text-green-600 hover:text-green-700 text-sm"
-              disabled={isLoading}
-            >
-              <FiClipboard /> Paste
-            </button>
           </div>
-        </motion.div>
-
-        {/* Recipient Selection */}
-        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-          <motion.div
-            style={glassStyle}
-            className="p-4 md:p-6 shadow-lg"
-            whileHover={{ scale: 1.005 }}
-          >
-            <h3 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2">
-              <FiUsers className="text-green-500" /> Select Class
-            </h3>
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-              <select
-                className="w-full md:w-2/3 p-3 border rounded-xl bg-white/50 focus:ring-2 focus:ring-green-300"
-                value={selectedClass}
-                onChange={(e) => {
-                  setSelectedClass(e.target.value);
-                  setCurrentPage(1);
-                  setSelectedNumbers([]);
-                }}
-                disabled={isLoading}
-              >
-                <option value="">Choose a class...</option>
-                {CLASS_OPTIONS.map(cls => (
-                  <option key={cls} value={cls}>{cls}</option>
-                ))}
-              </select>
-              <div className="flex gap-2 w-full md:w-1/3">
-                <button
-                  onClick={async () => {
-                    if (!selectedClass) {
-                      alert('Please select a class first!');
-                      return;
-                    }
-                    try {
-                      const response = await axios.get(`${BACKEND_URL}/students/export-csv`, {
-                        params: { class: selectedClass },
-                        responseType: 'blob',
-                      });
-                      const csvUrl = URL.createObjectURL(response.data);
-                      const csvLink = document.createElement('a');
-                      csvLink.href = csvUrl;
-                      csvLink.download = `${selectedClass}_students.csv`;
-                      csvLink.click();
-                      URL.revokeObjectURL(csvUrl);
-                      log(`Exported ${selectedClass} students to CSV`);
-                    } catch (error) {
-                      log(`CSV Export error: ${error instanceof Error ? error.message : String(error)}`);
-                      alert('Failed to export CSV');
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
-                  disabled={isLoading}
-                >
-                  Export CSV
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!selectedClass) {
-                      alert('Please select a class first!');
-                      return;
-                    }
-                    try {
-                      const response = await axios.get(`${BACKEND_URL}/students`, {
-                        params: { class: selectedClass },
-                      });
-                      const studentsData = response.data.students as Student[];
-                      const totalStudents = response.data.total;
-                      const exportDate = new Date().toLocaleDateString();
-
-                      const printWindow = window.open('', '_blank');
-                      if (printWindow) {
-                        printWindow.document.write(`
-                          <html>
-                            <head>
-                              <title>MySchool - ${selectedClass} - Students</title>
-                              <style>
-                                @media print {
-                                  @page { margin: 2cm; }
-                                  th {
-                                    -webkit-print-color-adjust: exact;
-                                    print-color-adjust: exact;
-                                  }
-                                }
-                                body {
-                                  font-family: Arial, sans-serif;
-                                  margin: 0;
-                                  padding: 20px;
-                                  color: #333;
-                                  line-height: 1.5;
-                                }
-                                .container {
-                                  max-width: 1200px;
-                                  margin: 0 auto;
-                                }
-                                .header {
-                                  text-align: center;
-                                  margin-bottom: 30px;
-                                  border-bottom: 2px solid #3498db;
-                                  padding-bottom: 15px;
-                                }
-                                .header h1 {
-                                  color: #2c3e50;
-                                  margin: 0;
-                                  font-size: 28px;
-                                  font-weight: 700;
-                                }
-                                .header p {
-                                  color: #555;
-                                  font-size: 14px;
-                                  margin: 5px 0 0;
-                                }
-                                .stats {
-                                  background: #f8f9fa;
-                                  padding: 15px;
-                                  border-radius: 8px;
-                                  margin-bottom: 20px;
-                                  display: flex;
-                                  justify-content: space-between;
-                                  font-size: 14px;
-                                  border: 1px solid #ddd;
-                                }
-                                table {
-                                  width: 100%;
-                                  border-collapse: collapse;
-                                  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                                }
-                                th, td {
-                                  border: 1px solid #ddd;
-                                  padding: 12px;
-                                  text-align: left;
-                                  font-size: 14px;
-                                }
-                                th {
-                                  background-color: #3498db;
-                                  color: #fff;
-                                  font-weight: 600;
-                                  text-transform: uppercase;
-                                }
-                                tr:nth-child(even) {
-                                  background-color: #f9f9f9;
-                                }
-                                tr:hover {
-                                  background-color: #f1f1f1;
-                                }
-                                img {
-                                  max-width: 100px;
-                                  height: auto;
-                                  border-radius: 4px;
-                                  display: block;
-                                }
-                                .footer {
-                                  margin-top: 20px;
-                                  text-align: center;
-                                  color: #777;
-                                  font-size: 12px;
-                                  border-top: 1px solid #ddd;
-                                  padding-top: 15px;
-                                }
-                                @media (max-width: 768px) {
-                                  table, th, td {
-                                    font-size: 12px;
-                                    padding: 8px;
-                                  }
-                                  img {
-                                    max-width: 60px;
-                                  }
-                                }
-                              </style>
-                            </head>
-                            <body>
-                              <div class="container">
-                                <div class="header">
-                                  <h1>MySchool - ${selectedClass} - Students</h1>
-                                  <p>Generated on: ${exportDate}</p>
-                                </div>
-                                <div class="stats">
-                                  <span>Total Students: ${totalStudents}</span>
-                                  <span>Exported on: ${exportDate}</span>
-                                </div>
-                                <table>
-                                  <tr>
-                                    <th>Name</th>
-                                    <th>English Name</th>
-                                    <th>Number</th>
-                                    <th>Class</th>
-                                    <th>Description</th>
-                                    <th>Mother Name</th>
-                                    <th>Father Name</th>
-                                    <th>Photo</th>
-                                  </tr>
-                                  ${studentsData
-                            .map(
-                              (student) => `
-                                    <tr>
-                                      <td>${student.name || '-'}</td>
-                                      <td>${student.englishName || '-'}</td>
-                                      <td>${student.number || '-'}</td>
-                                      <td>${student.class || '-'}</td>
-                                      <td>${student.description || '-'}</td>
-                                      <td>${student.motherName || '-'}</td>
-                                      <td>${student.fatherName || '-'}</td>
-                                      <td>${student.photoUrl
-                                  ? `<img src="${student.photoUrl}" alt="${student.name || 'Student'}'s photo" onerror="this.style.display='none';this.nextSibling.style.display='block'" /><span style="display:none">Image not available</span>`
-                                  : 'No photo'
-                                }</td>
-                                    </tr>
-                                  `
-                            )
-                            .join('')}
-                                </table>
-                                <div class="footer">
-                                  Generated by MySchool Official Website • https://myschool-offical.netlify.app
-                                </div>
-                              </div>
-                            </body>
-                          </html>
-                        `);
-                        printWindow.document.close();
-                        printWindow.print();
-                        log(`Exported ${selectedClass} students to PDF`);
-                      }
-                    } catch (error) {
-                      log(`PDF Export error: ${error instanceof Error ? error.message : String(error)}`);
-                      alert('Failed to export PDF');
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm"
-                  disabled={isLoading}
-                >
-                  Export PDF
-                </button>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            style={glassStyle}
-            className="p-4 md:p-6 shadow-lg"
-            whileHover={{ scale: 1.005 }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg md:text-xl font-bold flex items-center gap-2">
-                <FiUsers className="text-purple-500" /> Students
-                <span className="text-sm font-normal text-gray-500">({selectedNumbers.length} selected)</span>
-              </h3>
-              <input
-                type="text"
-                placeholder="🔍 Search students..."
-                className="w-full p-2 border rounded-lg bg-white/50 focus:ring-2 focus:ring-purple-300"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="h-64 overflow-y-auto border rounded-xl bg-white/50 p-2">
-              <AnimatePresence>
-                {isLoading ? (
-                  <motion.div
-                    key="loading"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-center py-4"
-                  >
-                    Loading...
-                  </motion.div>
-                ) : filteredStudents.length === 0 ? (
-                  <motion.div
-                    key="no-students"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-center py-4"
-                  >
-                    No students found
-                  </motion.div>
-                ) : (
-                  filteredStudents.map(student => (
-                    <motion.label
-                      key={student.id}
-                      initial={{ x: -20, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: 20, opacity: 0 }}
-                      className="flex items-center mb-2 hover:bg-blue-100 p-2 rounded-lg"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedNumbers.includes(student.number)}
-                        onChange={() => handleNumberSelection(student.number)}
-                        className="mr-2"
-                        disabled={isLoading}
-                      />
-                      <span>{student.name} ({student.number})</span>
-                    </motion.label>
-                  ))
-                )}
-              </AnimatePresence>
-            </div>
-
-            <div className="mt-4 flex flex-col md:flex-row justify-between items-center gap-4">
-              <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                <button
-                  onClick={() => setSelectedNumbers(filteredStudents.map(s => s.number))}
-                  className="text-sm md:text-base px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 w-full md:w-auto"
-                  disabled={isLoading}
-                >
-                  Select All
-                </button>
-                <button
-                  onClick={() => setSelectedNumbers([])}
-                  className="text-sm md:text-base px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 w-full md:w-auto"
-                  disabled={isLoading}
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || isLoading}
-                  className="px-3 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 w-full md:w-auto"
-                >
-                  Prev
-                </button>
-                <span className="px-3 py-2 text-center">Page {currentPage}</span>
-                <button
-                  onClick={() => setCurrentPage(p => p + 1)}
-                  disabled={students.length < itemsPerPage || isLoading}
-                  className="px-3 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 w-full md:w-auto"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </motion.div>
         </div>
 
-        {/* Send Button */}
-        <motion.div
-          className="mt-8 text-center"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <button
-            onClick={sendSMS}
-            disabled={apiStatus !== 'connected' || !selectedNumbers.length || !message || isLoading}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-4 rounded-xl text-lg font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Sending...
-              </span>
-            ) : (
-              `📤 Send SMS to ${selectedNumbers.length} Recipients`
-            )}
-          </button>
-          <p className="mt-2 text-sm text-gray-600">
-            Estimated Cost: {totalCost.toFixed(2)} টাকা • SMS Parts: {Math.ceil(
-              selectedNumbers.reduce((max, number) => {
-                const student = students.find(s => s.number === number);
-                if (student) {
-                  const personalizedMessage = generatePersonalizedMessage(student);
-                  return Math.max(max, personalizedMessage.length);
-                }
-                return max;
-              }, message.length) / 160
-            )}
-          </p>
-        </motion.div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Left Column: Configuration & Recipients */}
+            <div className="w-full lg:w-[400px] shrink-0 space-y-6">
+              <Card className="border-none shadow-sm rounded-3xl overflow-hidden overflow-y-auto max-h-[calc(100vh-200px)] sticky top-8">
+                <CardHeader className="bg-white border-b border-slate-50 pb-4">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Users className="h-5 w-5 text-indigo-500" />
+                    Target Audience
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 capitalize">Academy Class</label>
+                      <Select value={selectedClass} onValueChange={setSelectedClass}>
+                        <SelectTrigger className="rounded-xl bg-slate-50 border-transparent focus:ring-indigo-500">
+                          <SelectValue placeholder="Select class..." />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          {CLASS_OPTIONS.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-        {/* Activity Logs */}
-        <motion.div
-          style={glassStyle}
-          className="mt-8 p-6 shadow-lg"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <FiClipboard className="text-blue-500" /> Activity Logs
-          </h3>
-          <div className="h-32 overflow-y-auto border rounded-xl bg-white/50 p-2 text-sm">
-            {logs.map((log, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="py-1 border-b last:border-b-0"
-              >
-                {log}
-              </motion.div>
-            ))}
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 capitalize">Quick Search</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                        <Input
+                          placeholder="Name, ID or Number..."
+                          className="pl-9 rounded-xl border-none bg-slate-50"
+                          value={searchTerm}
+                          onChange={e => setSearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-50">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="select-all"
+                          checked={selectedNumbers.length > 0 && selectedNumbers.length === filteredStudents.length}
+                          onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                        />
+                        <label htmlFor="select-all" className="text-xs font-bold text-slate-600 cursor-pointer">
+                          Select All ({filteredStudents.length})
+                        </label>
+                      </div>
+                      <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] font-black">
+                        {selectedNumbers.length} SELECTED
+                      </Badge>
+                    </div>
+
+                    <ScrollArea className="h-[300px] pr-4 -mr-4">
+                      <div className="space-y-1">
+                        {isLoading ? (
+                          <div className="flex flex-col items-center justify-center h-48 gap-4">
+                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
+                            <p className="text-xs text-slate-400 animate-pulse">Synchronizing directory...</p>
+                          </div>
+                        ) : filteredStudents.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-48 gap-2 text-slate-300">
+                            <User className="h-10 w-10 opacity-20" />
+                            <p className="text-[10px] font-bold uppercase">No records found</p>
+                          </div>
+                        ) : filteredStudents.map(student => (
+                          <div
+                            key={student.id}
+                            onClick={() => handleCheckStudent(student.number, !selectedNumbers.includes(student.number))}
+                            className={cn(
+                              "group flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer",
+                              selectedNumbers.includes(student.number) ? "bg-indigo-50/50 border-indigo-100" : "hover:bg-slate-50 border-transparent"
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                checked={selectedNumbers.includes(student.number)}
+                                onCheckedChange={(checked) => handleCheckStudent(student.number, checked === true)}
+                                onClick={e => e.stopPropagation()}
+                              />
+                              <div className="overflow-hidden">
+                                <p className="text-xs font-bold text-slate-800 truncate leading-none">{student.name}</p>
+                                <p className="text-[10px] text-slate-400 mt-1 font-mono">{student.number || 'No Number'}</p>
+                              </div>
+                            </div>
+                            <Badge className="text-[9px] bg-slate-100 text-slate-500 font-mono shadow-none border-none">
+                              {student.studentId?.slice(-4) || '---'}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right Column: Execution */}
+            <div className="flex-1 space-y-6">
+              <Card className="border-none shadow-sm rounded-3xl overflow-hidden">
+                <CardHeader className="bg-white border-b border-slate-50">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Send className="h-5 w-5 text-indigo-600" />
+                      Compose Message
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => setMessage('')} className="text-xs text-red-500 hover:bg-red-50 rounded-xl px-3 h-8">
+                        Clear Draft
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {PLACEHOLDERS.map(p => (
+                        <Button
+                          key={p.key}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setMessage(prev => prev + p.key)}
+                          className="text-[10px] font-bold h-7 rounded-lg border-slate-200 text-slate-600 bg-slate-50 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all active:scale-95"
+                        >
+                          {p.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <textarea
+                      className="w-full min-h-[220px] p-6 rounded-2xl bg-slate-50 border-transparent focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-800 placeholder:text-slate-300 resize-none font-medium leading-relaxed"
+                      placeholder="Start typing your school alert here..."
+                      value={message}
+                      onChange={e => setMessage(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50 flex flex-col justify-center gap-1">
+                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Character Count</p>
+                      <p className="text-2xl font-black text-indigo-700">{message.length}</p>
+                    </div>
+                    <div className="bg-violet-50/50 p-4 rounded-2xl border border-violet-100/50 flex flex-col justify-center gap-1">
+                      <p className="text-[10px] font-black text-violet-400 uppercase tracking-widest">Est. SMS Parts</p>
+                      <p className="text-2xl font-black text-violet-700">{smsMetrics.parts}</p>
+                    </div>
+                    <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100/50 flex flex-col justify-center gap-1">
+                      <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Projected Cost</p>
+                      <p className="text-2xl font-black text-emerald-700">{smsMetrics.cost.toFixed(2)} ৳</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <Button
+                      size="lg"
+                      onClick={handleSendSms}
+                      disabled={isLoading || !message || selectedNumbers.length === 0}
+                      className="rounded-2xl px-12 h-14 bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 font-black text-lg group"
+                    >
+                      {isLoading ? (
+                        <div className="flex items-center gap-3">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                          TRANSMITTING...
+                        </div>
+                      ) : (
+                        <>
+                          DISPATCH SMS
+                          <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Logs */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="border-none shadow-sm rounded-3xl h-[300px] flex flex-col">
+                  <CardHeader className="py-4 border-b border-slate-50">
+                    <CardTitle className="text-sm font-bold flex items-center gap-2">
+                      <History className="h-4 w-4 text-slate-400" />
+                      ACTIVITY LOGS
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1 overflow-hidden">
+                    <ScrollArea className="h-full">
+                      <div className="p-4 space-y-2">
+                        {logs.length === 0 && <p className="text-[10px] text-center text-slate-300 py-10 italic">No activity recorded for this session</p>}
+                        {logs.map((log, i) => (
+                          <div key={i} className="flex gap-3 text-[10px] font-medium leading-normal animate-in slide-in-from-left-2 duration-300">
+                            <span className="text-slate-300 shrink-0 font-mono">{log.time}</span>
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full",
+                              log.type === 'success' ? "bg-emerald-50 text-emerald-600" :
+                                log.type === 'error' ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-500"
+                            )}>
+                              {log.msg}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-sm rounded-3xl bg-indigo-600 text-white relative overflow-hidden">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Info className="h-5 w-5" />
+                      Pro Tips
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-indigo-100 font-medium">1. Use <strong>Personalized Tags</strong> to increase student engagement and trust.</p>
+                    <p className="text-sm text-indigo-100 font-medium">2. Keep messages under <strong>70 characters</strong> for Bengali/Unicode to stay within 1 SMS part.</p>
+                    <p className="text-sm text-indigo-100 font-medium">3. Verify your <strong>Gateway Balance</strong> before executing large scale broadcasts.</p>
+                    <div className="pt-4">
+                      <Button variant="secondary" className="w-full rounded-xl bg-white/10 hover:bg-white/20 border-none text-white font-bold">
+                        Read Documentation
+                      </Button>
+                    </div>
+                  </CardContent>
+                  {/* Background decoration */}
+                  <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+                </Card>
+              </div>
+            </div>
           </div>
-        </motion.div>
-      </motion.div>
+        </Tabs>
+      </div>
     </div>
   );
 };
 
-export default SMSService;
+export default SmsService;

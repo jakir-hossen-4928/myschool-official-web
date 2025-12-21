@@ -1,15 +1,29 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { db } from '@/lib/firebase';
+import {
+  collection, getDocs, addDoc, updateDoc, deleteDoc,
+  doc, query, where, orderBy, getDoc
+} from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import html2pdf from 'html2pdf.js';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Search, Plus, Filter, Download, Trash2, Edit2,
+  ChevronRight, ClipboardList, GraduationCap, Trophy,
+  Save, X, CheckCircle2, ChevronDown, LayoutDashboard,
+  FileText, UserPlus, Info
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 // @ts-ignore
 import classesData from '@/lib/classes.json';
-import Spreadsheet from 'react-spreadsheet';
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
 
 const CLASSES = (classesData as any[]).map(cls => cls.name);
 
@@ -22,6 +36,7 @@ interface ExamConfig {
 
 interface Student {
   id: string;
+  studentId: string;
   name: string;
   class: string;
 }
@@ -36,71 +51,6 @@ interface ResultRow {
   total: string;
   rank: string;
 }
-
-const ResultsTable: React.FC<{
-  parsedResults: ResultRow[];
-  loadingResults: boolean;
-  onEditResult: (result: ResultRow) => void;
-  onDeleteResult: (id: string) => void;
-}> = React.memo(({ parsedResults, loadingResults, onEditResult, onDeleteResult }) => {
-  const isMobile = window.innerWidth < 768;
-
-  const filteredResults = parsedResults.filter(
-    r => r.studentId && r.studentName && r.class && r.exam
-  );
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border text-xs sm:text-sm">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border px-2 py-1">Student ID</th>
-            <th className="border px-2 py-1">Name</th>
-            <th className="border px-2 py-1">Class</th>
-            <th className="border px-2 py-1">Exam</th>
-            <th className="border px-2 py-1">Subject</th>
-            <th className="border px-2 py-1">Total</th>
-            <th className="border px-2 py-1">Rank</th>
-            <th className="border px-2 py-1">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loadingResults ? (
-            <tr><td colSpan={8} className="text-center py-4">Loading...</td></tr>
-          ) : filteredResults.length === 0 ? (
-            <tr><td colSpan={8} className="text-center py-4">No results found.</td></tr>
-          ) : filteredResults.map(result => (
-            <tr key={result.id} className="hover:bg-gray-50">
-              <td className="border px-2 py-1 font-mono">{result.studentId}</td>
-              <td className="border px-2 py-1">{result.studentName}</td>
-              <td className="border px-2 py-1">{result.class}</td>
-              <td className="border px-2 py-1">{result.exam}</td>
-              <td className="border px-2 py-1">
-                <div className={isMobile ? 'flex flex-col gap-1' : 'flex flex-wrap gap-2'}>
-                  {Object.entries(result.subjects)
-                    .filter(([_, mark]) => mark)
-                    .map(([subject, mark]) => (
-                      <span key={subject} className="inline-block bg-gray-100 px-2 py-1 rounded text-xs">
-                        {subject}: {mark}
-                      </span>
-                    ))}
-                </div>
-              </td>
-              <td className="border px-2 py-1 font-semibold">{result.total}</td>
-              <td className="border px-2 py-1">
-                <span className="inline-block bg-blue-100 text-blue-800 rounded px-2 py-0.5 font-bold">{result.rank}</span>
-              </td>
-              <td className="border px-2 py-1">
-                <Button size="sm" className="mr-2" onClick={() => { onEditResult(result); }}>Edit</Button>
-                <Button size="sm" variant="destructive" onClick={() => { onDeleteResult(result.id); }}>Delete</Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-});
 
 const ExamManagement: React.FC = () => {
   const { toast } = useToast();
@@ -120,60 +70,100 @@ const ExamManagement: React.FC = () => {
   const [availableExams, setAvailableExams] = useState<string[]>([]);
   const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
   const [customSubjects, setCustomSubjects] = useState<string[]>([]);
-  const [tab, setTab] = useState<'exam' | 'result' | 'results'>('exam');
+  const [tab, setTab] = useState('exam');
   const [results, setResults] = useState<ResultRow[]>([]);
   const [loadingResults, setLoadingResults] = useState(false);
   const [resultClass, setResultClass] = useState('');
   const [resultExam, setResultExam] = useState('');
   const [editingConfig, setEditingConfig] = useState<ExamConfig | null>(null);
   const [editingResult, setEditingResult] = useState<ResultRow | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const resultsPerPage = 10;
-  const [showResultModal, setShowResultModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [modalResult, setModalResult] = useState<ResultRow | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
   const [isAddingNewExam, setIsAddingNewExam] = useState(false);
 
   // Fetch configs
-  useEffect(() => {
+  const fetchConfigs = useCallback(async () => {
     setLoading(true);
-    axios.get(`${BACKEND_URL}/exam-configs`)
-      .then(res => setConfigs(res.data.configs || []))
-      .catch(() => setConfigs([]))
-      .finally(() => setLoading(false));
-  }, []);
+    try {
+      const snapshot = await getDocs(collection(db, 'exam-configs'));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamConfig));
+      setConfigs(data);
+    } catch (error) {
+      console.error("Error fetching configs:", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load configurations.' });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchConfigs();
+  }, [fetchConfigs]);
 
   // Fetch students
   useEffect(() => {
-    if (!selectedClass) {
-      setStudents([]);
-      setSelectedStudent(null);
-      return;
-    }
-    axios.get(`${BACKEND_URL}/students`, { params: { class: selectedClass, limit: 1000 } })
-      .then(res => setStudents(res.data.students || []))
-      .catch(() => setStudents([]));
+    const fetchStudents = async () => {
+      if (!selectedClass) {
+        setStudents([]);
+        return;
+      }
+      try {
+        const q = query(collection(db, 'students'), where('class', '==', selectedClass));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          studentId: doc.data().studentId,
+          name: doc.data().name,
+          class: doc.data().class
+        } as Student));
+        setStudents(data);
+      } catch (error) {
+        console.error("Error fetching students:", error);
+      }
+    };
+    fetchStudents();
   }, [selectedClass]);
 
-  // Calculate total
+  // Fetch results
+  const fetchResults = useCallback(async () => {
+    setLoadingResults(true);
+    try {
+      let q = query(collection(db, 'exam-results'), orderBy('class'), orderBy('exam'));
+      if (resultClass) {
+        q = query(collection(db, 'exam-results'), where('class', '==', resultClass));
+        if (resultExam) {
+          q = query(q, where('exam', '==', resultExam));
+        }
+      }
+
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ResultRow));
+      setResults(data);
+    } catch (err) {
+      console.error('Error fetching results:', err);
+      setResults([]);
+    } finally {
+      setLoadingResults(false);
+    }
+  }, [resultClass, resultExam]);
+
+  useEffect(() => {
+    if (tab === 'results') {
+      fetchResults();
+    }
+  }, [tab, fetchResults]);
+
+  // Update total marks
   useEffect(() => {
     const sum = (availableSubjects.length > 0 ? availableSubjects : customSubjects)
       .reduce((acc, sub) => acc + (parseInt(marks[sub] || '0', 10) || 0), 0);
-    setTotal(sum ? sum.toString() : '');
+    setTotal(sum ? sum.toString() : '0');
   }, [marks, availableSubjects, customSubjects]);
 
-  // Update available exams
+  // Update available exams & subjects
   useEffect(() => {
     const exams = configs.filter(cfg => cfg.class === selectedClass).map(cfg => cfg.exam);
     setAvailableExams([...new Set(exams)]);
-    if (!exams.includes(selectedExam)) setSelectedExam('');
   }, [selectedClass, configs]);
 
-  // Update available subjects
   useEffect(() => {
     if (selectedClass && selectedExam) {
       const config = configs.find(cfg => cfg.class === selectedClass && cfg.exam === selectedExam);
@@ -185,74 +175,27 @@ const ExamManagement: React.FC = () => {
     }
   }, [selectedClass, selectedExam, configs, editingResult]);
 
-  // Fetch results with pagination
-  const fetchResults = useCallback(async () => {
-    setLoadingResults(true);
-    try {
-      const params: Record<string, string> = {};
-      if (resultClass && resultClass !== '') params.class = resultClass;
-      if (resultExam && resultExam !== '') params.exam = resultExam;
-      const res = await axios.get(`${BACKEND_URL}/results`, { params });
-      setResults(res.data.results || []);
-      setTotalPages(1); // No pagination, show all
-      console.log('[DEBUG] Results fetched:', res.data.results);
-    } catch (err) {
-      setResults([]);
-      setTotalPages(1);
-      console.error('[DEBUG] Error fetching results:', err);
-    } finally {
-      setLoadingResults(false);
-    }
-  }, [resultClass, resultExam]);
-
-  useEffect(() => {
-    if (tab === 'results') {
-      console.log('[DEBUG] Results tab loaded. resultClass:', resultClass, 'resultExam:', resultExam);
-      fetchResults();
-    }
-  }, [tab, fetchResults, resultClass, resultExam]);
-
-  const handleAddSubject = () => {
-    if (subjectInput && !subjects.includes(subjectInput)) {
-      setSubjects([...subjects, subjectInput]);
-      setSubjectInput('');
-    }
-  };
-
-  const handleRemoveSubject = (sub: string) => {
-    setSubjects(subjects.filter(s => s !== sub));
-  };
-
   const handleSaveConfig = async () => {
     if (!selectedClass || !examName || subjects.length === 0) {
-      toast({ variant: 'destructive', title: 'Missing fields', description: 'Class, exam, and at least one subject are required.' });
+      toast({ variant: 'destructive', title: 'Missing fields', description: 'Class, exam, and subjects are required.' });
       return;
     }
     setLoading(true);
     try {
+      const payload = { class: selectedClass, exam: examName, subjects };
       if (editingConfig) {
-        await axios.put(`${BACKEND_URL}/exam-configs/${editingConfig.id}`, {
-          class: selectedClass,
-          exam: examName,
-          subjects
-        });
-        toast({ title: 'Exam config updated!' });
+        await updateDoc(doc(db, 'exam-configs', editingConfig.id), payload);
+        toast({ title: 'Success', description: 'Exam configuration updated!' });
       } else {
-        await axios.post(`${BACKEND_URL}/exam-configs`, {
-          class: selectedClass,
-          exam: examName,
-          subjects
-        });
-        toast({ title: 'Exam config saved!' });
+        await addDoc(collection(db, 'exam-configs'), payload);
+        toast({ title: 'Success', description: 'Exam configuration saved!' });
       }
       setSubjects([]);
       setExamName('');
-      setSelectedClass('');
       setEditingConfig(null);
-      const res = await axios.get(`${BACKEND_URL}/exam-configs`);
-      setConfigs(res.data.configs || []);
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to save config.' });
+      fetchConfigs();
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to save configuration.' });
     } finally {
       setLoading(false);
     }
@@ -263,31 +206,20 @@ const ExamManagement: React.FC = () => {
     setSelectedClass(config.class);
     setExamName(config.exam);
     setSubjects(config.subjects);
+    setTab('exam');
   };
 
   const handleDeleteConfig = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this exam configuration?')) return;
+    if (!confirm('Delete this exam configuration?')) return;
     setLoading(true);
     try {
-      await axios.delete(`${BACKEND_URL}/exam-configs/${id}`);
-      toast({ title: 'Exam config deleted!' });
-      const res = await axios.get(`${BACKEND_URL}/exam-configs`);
-      setConfigs(res.data.configs || []);
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to delete config.' });
+      await deleteDoc(doc(db, 'exam-configs', id));
+      toast({ title: 'Deleted', description: 'Exam configuration deleted!' });
+      fetchConfigs();
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete.' });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleStudentSelect = (student: Student) => {
-    setSelectedStudent(student);
-    setSelectedClass(student.class);
-  };
-
-  const handleMarkChange = (subject: string, value: string) => {
-    if (/^\d{0,3}$/.test(value)) {
-      setMarks(prev => ({ ...prev, [subject]: value }));
     }
   };
 
@@ -299,11 +231,12 @@ const ExamManagement: React.FC = () => {
     }
     setIsSubmitting(true);
     try {
-      const dynamicSubjects = availableSubjects.length > 0 ? availableSubjects : customSubjects;
+      const dynamicSubs = availableSubjects.length > 0 ? availableSubjects : customSubjects;
       const subjectsObj: Record<string, string> = {};
-      dynamicSubjects.forEach(sub => subjectsObj[sub] = marks[sub] || '');
+      dynamicSubs.forEach(sub => subjectsObj[sub] = marks[sub] || '');
+
       const payload = {
-        studentId: selectedStudent.id,
+        studentId: selectedStudent.studentId,
         studentName: selectedStudent.name,
         class: selectedClass,
         exam: selectedExam,
@@ -311,452 +244,434 @@ const ExamManagement: React.FC = () => {
         total,
         rank
       };
+
       if (editingResult) {
-        await axios.put(`${BACKEND_URL}/results/${editingResult.id}`, payload);
-        toast({ title: 'Result updated!' });
+        await updateDoc(doc(db, 'exam-results', editingResult.id), payload);
+        toast({ title: 'Updated', description: 'Result updated successfully!' });
       } else {
-        await axios.post(`${BACKEND_URL}/results`, payload);
-        toast({ title: 'Result added!' });
+        await addDoc(collection(db, 'exam-results'), payload);
+        toast({ title: 'Published', description: 'Result published successfully!' });
       }
       setMarks({});
       setRank('');
       setSelectedStudent(null);
-      setSelectedClass('');
-      setSelectedExam('');
-      setCustomSubjects([]);
       setEditingResult(null);
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to add result.' });
+      setTab('results');
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to save result.' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleEditResult = (result: ResultRow) => {
-    setTab('result');
     setEditingResult(result);
     setSelectedClass(result.class);
     setSelectedExam(result.exam);
-    setSelectedStudent({ id: result.studentId, name: result.studentName, class: result.class });
+    setSelectedStudent({ id: '', studentId: result.studentId, name: result.studentName, class: result.class });
     setMarks(result.subjects);
     setRank(result.rank);
     setTotal(result.total);
+    setTab('result');
   };
 
   const handleDeleteResult = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this result?')) return;
+    if (!confirm('Delete this result?')) return;
     setIsSubmitting(true);
     try {
-      await axios.delete(`${BACKEND_URL}/results/${id}`);
-      toast({ title: 'Result deleted!' });
+      await deleteDoc(doc(db, 'exam-results', id));
+      toast({ title: 'Deleted', description: 'Result removed!' });
       fetchResults();
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to delete result.' });
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete.' });
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  const handleAddSubjectInline = () => {
-    if (subjectInput && !customSubjects.includes(subjectInput)) {
-      setCustomSubjects([...customSubjects, subjectInput]);
-      setSubjectInput('');
-    }
-  };
-
-  const handleRemoveSubjectInline = (sub: string) => {
-    setCustomSubjects(customSubjects.filter(s => s !== sub));
-    setMarks(prev => {
-      const copy = { ...prev };
-      delete copy[sub];
-      return copy;
-    });
-  };
-
-  const generateResultsPDF = useCallback((rows: ResultRow[], title = 'Exam Results') => {
-    const exportDate = new Date().toLocaleString();
-    const element = document.createElement('div');
-    element.innerHTML = `
-      <div class="pdf-container">
-        <div class="header">
-          <h1>MySchool Official</h1>
-          <p>Result Sheet</p>
-          <p>Generated on: ${exportDate}</p>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Student ID</th>
-              <th>Name</th>
-              <th>Class</th>
-              <th>Exam</th>
-              <th>Subject</th>
-              <th>Total</th>
-              <th>Rank</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(result => `
-              <tr>
-                <td>${result.studentId}</td>
-                <td>${result.studentName}</td>
-                <td>${result.class}</td>
-                <td>${result.exam}</td>
-                <td>${Object.entries(result.subjects || []).filter(([_, mark]) => mark).map(([sub, mark]) => `${sub}: ${mark}`).join(', ')}</td>
-                <td>${result.total}</td>
-                <td>${result.rank}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="footer">
-          <p>Generated by MySchool Official Website • https://myschool-official.netlify.app</p>
-        </div>
-      </div>
-    `;
-    const style = document.createElement('style');
-    style.textContent = `
-      .pdf-container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; color: #333; }
-      .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #2c3e50; padding-bottom: 20px; }
-      .header h1 { color: #2c3e50; margin: 0; font-size: 28px; }
-      .header p { color: #7f8c8d; margin: 5px 0 0; }
-      table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-      th, td { padding: 10px; text-align: left; border: 1px solid #ddd; font-size: 13px; }
-      th { background-color: #2c3e50; color: white; }
-      tr:nth-child(even) { background-color: #f9f9f9; }
-      tr:hover { background-color: #f1f1f1; }
-      .footer { margin-top: 40px; text-align: center; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d; font-size: 13px; }
-      @media print { @page { margin: 2cm; } }
-    `;
-    element.appendChild(style);
-    html2pdf().set({
-      margin: 0.5,
-      filename: `${title.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' },
-    }).from(element).save();
-  }, []);
-
-  const handlePageChange = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
-
-  const dynamicSubjects = availableSubjects.length > 0 ? availableSubjects : customSubjects;
-
-  useEffect(() => {
-    // Fetch user for role-based UI
-    import('@/lib/auth').then(mod => mod.getCurrentUser().then(setUser).catch(() => setUser(null)));
-  }, []);
-
-  // Handler to open add modal
-  const openAddModal = () => {
-    setModalMode('add');
-    setModalResult(null);
-    setShowResultModal(true);
-  };
-  // Handler to open edit modal
-  const openEditModal = (result: ResultRow) => {
-    setModalMode('edit');
-    setModalResult(result);
-    setShowResultModal(true);
-  };
-  // Handler to open delete confirm
-  const openDeleteConfirm = (id: string) => {
-    setDeleteId(id);
-    setShowDeleteConfirm(true);
-  };
-  // Handler to close modals
-  const closeModals = () => {
-    setShowResultModal(false);
-    setShowDeleteConfirm(false);
-    setModalResult(null);
-    setDeleteId(null);
-  };
-
-  // Handler for add/edit submit
-  const handleResultSubmit = async (data: Partial<ResultRow>) => {
-    setIsSubmitting(true);
-    try {
-      if (modalMode === 'add') {
-        await axios.post(`${BACKEND_URL}/results`, data);
-        toast({ title: 'Result added!' });
-      } else if (modalMode === 'edit' && modalResult?.id) {
-        await axios.put(`${BACKEND_URL}/results/${modalResult.id}`, data);
-        toast({ title: 'Result updated!' });
-      }
-      closeModals();
-      fetchResults();
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to save result.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  // Handler for delete
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    setIsSubmitting(true);
-    try {
-      await axios.delete(`${BACKEND_URL}/results/${deleteId}`);
-      toast({ title: 'Result deleted!' });
-      closeModals();
-      fetchResults();
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err?.response?.data?.error || 'Failed to delete result.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Place filteredResults declaration just before the return statement, outside of any function
-  const filteredResults = results.filter(r => r.studentId && r.studentName && r.class && r.exam);
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      <div className="flex gap-2 mb-4">
-        <Button className={`px-4 py-2 rounded ${tab === 'exam' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`} onClick={() => setTab('exam')}>Exam Settings</Button>
-        <Button className={`px-4 py-2 rounded ${tab === 'result' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`} onClick={() => setTab('result')}>Result Publish</Button>
-        <Button className={`px-4 py-2 rounded ${tab === 'results' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`} onClick={() => setTab('results')}>Results</Button>
+    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50/50 min-h-screen">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <GraduationCap className="h-8 w-8 text-blue-600" />
+            Exam Management
+          </h1>
+          <p className="text-gray-500 mt-1">Configure exams, manage subjects, and publish student results</p>
+        </div>
+        <Tabs value={tab} onValueChange={setTab} className="w-full md:w-auto">
+          <TabsList className="grid grid-cols-3 w-full bg-gray-100/80 p-1">
+            <TabsTrigger value="exam" className="data-[state=active]:bg-white">Settings</TabsTrigger>
+            <TabsTrigger value="result" className="data-[state=active]:bg-white">Publish</TabsTrigger>
+            <TabsTrigger value="results" className="data-[state=active]:bg-white">Archives</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
-      {tab === 'exam' && (
-        <div>
-          <h2 className="text-2xl font-bold mb-4">Exam & Subject Management</h2>
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-sm font-medium mb-1">Class</label>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">{selectedClass || 'Select Class'}</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {CLASSES.map(cls => (
-                    <DropdownMenuItem key={cls} onClick={() => { setSelectedClass(cls); setSelectedStudent(null); setSelectedExam(''); }}>{cls}</DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+        >
+          {tab === 'exam' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Exam Configuration Form */}
+              <Card className="lg:col-span-1 border-none shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Plus className="h-5 w-5 text-blue-500" />
+                    {editingConfig ? 'Edit Configuration' : 'Create New Exam'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Class</label>
+                    <Select value={selectedClass} onValueChange={setSelectedClass}>
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Select Class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CLASSES.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Exam Name</label>
+                    <div className="relative">
+                      <Input
+                        value={examName}
+                        onChange={e => setExamName(e.target.value)}
+                        placeholder="e.g. Final Term 2024"
+                        className="pl-9"
+                      />
+                      <ClipboardList className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Subjects</label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={subjectInput}
+                        onChange={e => setSubjectInput(e.target.value)}
+                        placeholder="Add subject"
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddSubject()}
+                      />
+                      <Button onClick={handleAddSubject} size="icon" className="shrink-0 bg-blue-600">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {subjects.map(sub => (
+                        <Badge key={sub} variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-100">
+                          {sub}
+                          <button onClick={() => handleRemoveSubject(sub)} className="hover:bg-blue-200 rounded-full p-0.5 transition-colors">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                      {subjects.length === 0 && <p className="text-xs text-gray-400 italic">No subjects added yet</p>}
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex gap-2">
+                    <Button onClick={handleSaveConfig} className="flex-1 bg-blue-600" disabled={loading}>
+                      {loading ? 'Processing...' : (editingConfig ? 'Update Config' : 'Save Configuration')}
+                    </Button>
+                    {editingConfig && (
+                      <Button variant="outline" onClick={() => { setEditingConfig(null); setExamName(''); setSubjects([]); }}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Existing Configurations Table */}
+              <Card className="lg:col-span-2 border-none shadow-sm overflow-hidden">
+                <CardHeader className="bg-white border-b border-gray-100 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Existing Configurations</CardTitle>
+                    <CardDescription>Active exam rules and mark distributions</CardDescription>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-xs">{configs.length} Total</Badge>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader className="bg-gray-50/50">
+                      <TableRow>
+                        <TableHead className="w-[120px]">Class</TableHead>
+                        <TableHead>Exam Name</TableHead>
+                        <TableHead>Subjects</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {configs.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-32 text-center text-gray-500 italic">
+                            No configurations found. Start by creating one.
+                          </TableCell>
+                        </TableRow>
+                      ) : configs.map(cfg => (
+                        <TableRow key={cfg.id} className="group hover:bg-gray-50/50 transition-colors">
+                          <TableCell className="font-bold">{cfg.class}</TableCell>
+                          <TableCell className="font-medium text-gray-900">{cfg.exam}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1 max-w-sm">
+                              {cfg.subjects.map(s => <span key={s} className="text-[10px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">{s}</span>)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="icon" onClick={() => handleEditConfig(cfg)} className="h-8 w-8 text-blue-600 hover:bg-blue-50">
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDeleteConfig(cfg.id)} className="h-8 w-8 text-red-600 hover:bg-red-50">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-sm font-medium mb-1">Exam Name</label>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">{isAddingNewExam ? (examName || 'Enter new exam name') : (examName || 'Select Exam')}</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {availableExams.map(exam => (
-                    <DropdownMenuItem key={exam} onClick={() => { setExamName(exam); setIsAddingNewExam(false); }}>{exam}</DropdownMenuItem>
-                  ))}
-                  <DropdownMenuItem onClick={() => { setExamName(''); setIsAddingNewExam(true); }}>+ Add new</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {isAddingNewExam && (
-                <Input value={examName} onChange={e => setExamName(e.target.value)} placeholder="New exam name" className="w-full mt-2" />
-              )}
-            </div>
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Subjects</label>
-            <div className="flex gap-2 mb-2">
-              <Input value={subjectInput} onChange={e => setSubjectInput(e.target.value)} placeholder="Add subject" className="w-40" />
-              <Button type="button" onClick={handleAddSubject}>Add</Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {subjects.map(sub => (
-                <span key={sub} className="bg-green-100 text-green-800 px-2 py-1 rounded flex items-center gap-1">
-                  {sub}
-                  <button type="button" onClick={() => handleRemoveSubject(sub)} className="ml-1 text-red-500">×</button>
-                </span>
-              ))}
-            </div>
-          </div>
-          <Button onClick={handleSaveConfig} disabled={loading}>{loading ? 'Saving...' : editingConfig ? 'Update Config' : 'Save Config'}</Button>
-          <hr className="my-6" />
-          <h3 className="text-lg font-semibold mb-2">Existing Configurations</h3>
-          {configs.length === 0 ? (
-            <div>No configs found.</div>
-          ) : (
-            <table className="min-w-full border text-sm">
-              <thead>
-                <tr className="bg-gray-200">
-                  <th className="border px-2 py-1">Class</th>
-                  <th className="border px-2 py-1">Exam</th>
-                  <th className="border px-2 py-1">Subjects</th>
-                  <th className="border px-2 py-1">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {configs.map(cfg => (
-                  <tr key={cfg.id}>
-                    <td className="border px-2 py-1">{cfg.class}</td>
-                    <td className="border px-2 py-1">{cfg.exam}</td>
-                    <td className="border px-2 py-1">{cfg.subjects.join(', ')}</td>
-                    <td className="border px-2 py-1">
-                      <Button variant="outline" size="sm" className="mr-2" onClick={() => handleEditConfig(cfg)}>Edit</Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteConfig(cfg.id)}>Delete</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
-        </div>
-      )}
-      {tab === 'result' && (
-        <div>
-          <h2 className="text-2xl font-bold mb-4">Result Publish</h2>
-          <form onSubmit={handleSubmitResult} className="bg-white rounded shadow p-4 mb-8">
-            <div className="flex flex-col sm:flex-row flex-wrap gap-4 mb-4">
-              <div className="flex-1 min-w-[140px]">
-                <label className="block text-sm font-medium mb-1">Class</label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">{selectedClass || 'Select Class'}</Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    {CLASSES.map(cls => (
-                      <DropdownMenuItem key={cls} onClick={() => { setSelectedClass(cls); setSelectedStudent(null); setSelectedExam(''); }}>{cls}</DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="flex-1 min-w-[180px]">
-                <label className="block text-sm font-medium mb-1">Student</label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" disabled={!selectedClass}>{selectedStudent ? selectedStudent.name : 'Select Student'}</Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="max-h-60 overflow-y-auto w-56">
-                    {students.map(student => (
-                      <DropdownMenuItem key={student.id} onClick={() => handleStudentSelect(student)}>
-                        {student.name} <span className="ml-2 text-xs text-muted-foreground">({student.class})</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="flex-1 min-w-[140px]">
-                <label className="block text-sm font-medium mb-1">Exam</label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" disabled={!selectedStudent}>{selectedExam || 'Select Exam'}</Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    {availableExams.map(exam => (
-                      <DropdownMenuItem key={exam} onClick={() => setSelectedExam(exam)}>{exam}</DropdownMenuItem>
-                    ))}
-                    <DropdownMenuItem onClick={() => setIsAddingNewExam(true)}>+ Add new</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {isAddingNewExam && (
-                  <Input value={selectedExam} onChange={e => setSelectedExam(e.target.value)} placeholder="New exam name" className="w-full mt-2" />
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-4 mb-4">
-              {dynamicSubjects.map(subject => (
-                <div key={subject} className="flex-1 min-w-[120px]">
-                  <label className="block text-sm font-medium mb-1">{subject}</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={marks[subject] || ''}
-                    onChange={e => handleMarkChange(subject, e.target.value)}
-                    placeholder="0"
-                    className="w-full"
-                  />
-                </div>
-              ))}
-              {availableSubjects.length === 0 && (
-                <div className="flex-1 min-w-[140px]">
-                  <label className="block text-sm font-medium mb-1">Add Subject</label>
-                  <div className="flex gap-2 mb-2">
-                    <Input value={subjectInput} onChange={e => setSubjectInput(e.target.value)} placeholder="Subject name" className="w-full" />
-                    <Button type="button" onClick={handleAddSubjectInline}>Add</Button>
+
+          {tab === 'result' && (
+            <Card className="border-none shadow-sm max-w-4xl mx-auto">
+              <CardHeader className="border-b border-gray-100">
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-yellow-500" />
+                  {editingResult ? 'Update Result Entry' : 'Manual Result Entry'}
+                </CardTitle>
+                <CardDescription>Enter marks for individual students based on configured exams</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <form onSubmit={handleSubmitResult} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Select Class</label>
+                      <Select value={selectedClass} onValueChange={setSelectedClass}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Class" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLASSES.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Select Student</label>
+                      <Select onValueChange={(val) => {
+                        const s = students.find(x => x.studentId === val);
+                        if (s) setSelectedStudent(s);
+                      }} disabled={!selectedClass} value={selectedStudent?.studentId}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder={students.length > 0 ? "Choose Student" : "No students in class"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {students.map(s => <SelectItem key={s.id} value={s.studentId}>{s.name} ({s.studentId})</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Select Exam</label>
+                      <Select value={selectedExam} onValueChange={setSelectedExam} disabled={!selectedStudent}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Exam" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableExams.map(ex => <SelectItem key={ex} value={ex}>{ex}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {customSubjects.map(sub => (
-                      <span key={sub} className="bg-green-100 text-green-800 px-2 py-1 rounded flex items-center gap-1">
-                        {sub}
-                        <button type="button" onClick={() => handleRemoveSubjectInline(sub)} className="ml-1 text-red-500">×</button>
-                      </span>
-                    ))}
-                  </div>
+
+                  {selectedExam && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-6 pt-4 border-t border-gray-100"
+                    >
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {(availableSubjects.length > 0 ? availableSubjects : customSubjects).map(subject => (
+                          <div key={subject} className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-500 uppercase">{subject}</label>
+                            <Input
+                              type="number"
+                              placeholder="Score"
+                              value={marks[subject] || ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (/^\d{0,3}$/.test(val) && (parseInt(val) <= 100 || val === '')) {
+                                  setMarks(prev => ({ ...prev, [subject]: val }));
+                                }
+                              }}
+                              className="bg-white font-mono text-center"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <div className="flex items-center justify-between px-4 py-2 bg-white rounded-md border border-gray-200">
+                          <span className="text-sm font-medium text-gray-500">Aggregate Total</span>
+                          <span className="text-xl font-bold text-gray-900">{total}</span>
+                        </div>
+                        <div className="relative">
+                          <Input
+                            placeholder="Merit Rank (e.g. 1st, 2nd)"
+                            value={rank}
+                            onChange={e => setRank(e.target.value)}
+                            className="bg-white"
+                          />
+                          <Trophy className="absolute right-3 top-2.5 h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-4">
+                        <Button
+                          variant="outline"
+                          type="button"
+                          onClick={() => { setEditingResult(null); setMarks({}); setRank(''); setSelectedStudent(null); }}
+                        >
+                          Reset Form
+                        </Button>
+                        <Button
+                          type="submit"
+                          className="bg-green-600 hover:bg-green-700 min-w-[150px]"
+                          disabled={isSubmitting}
+                        >
+                          <Save className="h-4 w-4 mr-2" />
+                          {isSubmitting ? 'Publishing...' : (editingResult ? 'Update Result' : 'Publish Result')}
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {tab === 'results' && (
+            <Card className="border-none shadow-sm overflow-hidden">
+              <CardHeader className="bg-white border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <CardTitle className="text-lg">Result Archives</CardTitle>
+                  <CardDescription>Browse historical exam results and export PDF reports</CardDescription>
                 </div>
-              )}
-              <div className="flex-1 min-w-[120px]">
-                <label className="block text-sm font-medium mb-1">Total</label>
-                <Input value={total} disabled className="w-full" />
-              </div>
-              <div className="flex-1 min-w-[120px]">
-                <label className="block text-sm font-medium mb-1">Rank</label>
-                <Input value={rank} onChange={e => setRank(e.target.value)} placeholder="Rank" className="w-full" />
-              </div>
-            </div>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">{isSubmitting ? 'Submitting...' : editingResult ? 'Update Result' : 'Publish Result'}</Button>
-          </form>
-        </div>
-      )}
-      {tab === 'results' && (
-        <div>
-          <h2 className="text-2xl font-bold mb-4">Results</h2>
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-sm font-medium mb-1">Class</label>
-              <select value={resultClass} onChange={e => { setResultClass(e.target.value); setResultExam(''); }} className="w-full border rounded p-2">
-                <option value="">All Classes</option>
-                {CLASSES.map((cls, index) => <option key={index} value={cls}>{cls}</option>)}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-sm font-medium mb-1">Exam</label>
-              <select value={resultExam} onChange={e => { setResultExam(e.target.value); }} className="w-full border rounded p-2" disabled={!resultClass}>
-                <option value="">All Exams</option>
-                {availableExams.map((exam, index) => <option key={index} value={exam}>{exam}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="overflow-x-auto rounded shadow bg-white">
-            <div className="flex flex-col sm:flex-row justify-between items-center p-2 gap-2">
-              <span className="font-semibold">Results</span>
-              <Button
-                type="button"
-                className="bg-green-600 text-white px-4 py-2 rounded"
-                onClick={() => setTab('result')}
-              >
-                Add Result
-              </Button>
-            </div>
-            <ResultsTable
-              parsedResults={filteredResults}
-              loadingResults={loadingResults}
-              onEditResult={handleEditResult}
-              onDeleteResult={handleDeleteResult}
-            />
-            <div className="flex justify-center items-center gap-2 p-4">
-              <Button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="px-4 py-2"
-              >
-                Previous
-              </Button>
-              <span className="text-sm">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="px-4 py-2"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select value={resultClass} onValueChange={setResultClass}>
+                    <SelectTrigger className="w-[140px] bg-white text-xs h-9">
+                      <Filter className="h-3 w-3 mr-2" />
+                      <SelectValue placeholder="All Classes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Classes</SelectItem>
+                      {CLASSES.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={resultExam} onValueChange={setResultExam} disabled={!resultClass}>
+                    <SelectTrigger className="w-[160px] bg-white text-xs h-9">
+                      <SelectValue placeholder="All Exams" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Exams</SelectItem>
+                      {availableExams.map(ex => <SelectItem key={ex} value={ex}>{ex}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+
+                  <Button variant="outline" size="sm" onClick={() => fetchResults()} className="h-9">
+                    <Search className="h-4 w-4 mr-2" />
+                    Filter
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-gray-50/50">
+                    <TableRow>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Class/Exam</TableHead>
+                      <TableHead>Marks Visualization</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Rank</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loadingResults ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-32 text-center text-gray-400">Loading result data...</TableCell>
+                      </TableRow>
+                    ) : results.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-32 text-center text-gray-500 italic">No results found for selected filters</TableCell>
+                      </TableRow>
+                    ) : results.map(row => (
+                      <TableRow key={row.id} className="group hover:bg-gray-50/50 transition-colors">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">
+                              {row.studentName.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900 leading-none">{row.studentName}</p>
+                              <p className="text-[10px] text-gray-500 mt-1 font-mono uppercase">{row.studentId}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-xs font-bold text-blue-600 uppercase">{row.class}</p>
+                          <p className="text-xs text-gray-500 truncate max-w-[120px]">{row.exam}</p>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1 max-w-[300px]">
+                            {Object.entries(row.subjects).map(([sub, mark]) => (
+                              <Badge key={sub} variant="outline" className="text-[9px] px-1.5 py-0 border-gray-200">
+                                {sub}: <span className="text-blue-600 font-bold ml-1">{mark}</span>
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="inline-flex flex-col">
+                            <span className="text-sm font-black text-gray-900">{row.total}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {row.rank && <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] font-black uppercase">{row.rank}</Badge>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditResult(row)} className="h-8 w-8 text-blue-600 hover:bg-blue-50">
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteResult(row.id)} className="h-8 w-8 text-red-600 hover:bg-red-50">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

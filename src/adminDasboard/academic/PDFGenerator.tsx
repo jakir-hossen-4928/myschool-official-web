@@ -1,401 +1,439 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AdmitCard from '@/components/pdf/AdmitCard';
 import IDCard from '@/components/pdf/IDCard';
 import ResultCard from '@/components/pdf/ResultCard';
 import SeatPlan from '@/components/pdf/SeatPlan';
 import html2pdf from 'html2pdf.js';
 import classesList from '@/lib/classes.json';
-import axios from 'axios';
-import { getAbsoluteUrl } from '@/lib/utils';
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { getAbsoluteUrl, cn } from '@/lib/utils';
+import {
+  FileText, CreditCard, UserCheck, MapPin,
+  Download, Printer, Filter, Users,
+  ChevronRight, LayoutDashboard, Settings2,
+  CheckCircle2, AlertCircle, Info
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { motion, AnimatePresence } from 'framer-motion';
 
 const SCHOOL_NAME = 'MySchool Official';
 const SCHOOL_LOGO = '/public/my-school-logo.jpg';
 
 const PDF_TYPES = [
-  { value: 'result', label: 'Result Card' },
-  { value: 'admit', label: 'Admit Card' },
-  { value: 'seat', label: 'Exam Seat Plan' },
-  { value: 'id', label: 'ID Card' },
+  { value: 'result', label: 'Result Card', icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
+  { value: 'admit', label: 'Admit Card', icon: CreditCard, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+  { value: 'seat', label: 'Exam Seat Plan', icon: MapPin, color: 'text-amber-500', bg: 'bg-amber-50' },
+  { value: 'id', label: 'ID Card', icon: UserCheck, color: 'text-emerald-500', bg: 'bg-emerald-50' },
 ];
-
-const fetchStudents = async (className = '') => {
-  try {
-    const params = className ? { class: className, limit: 1000 } : { limit: 1000 };
-    const res = await axios.get(`${BACKEND_URL}/students`, { params });
-    return res.data.students || [];
-  } catch (e) {
-    return [];
-  }
-};
-
-const fetchResults = async (studentId = '', exam = '') => {
-  try {
-    const params: any = {};
-    if (studentId) params.studentId = studentId;
-    if (exam) params.exam = exam;
-    const res = await axios.get(`${BACKEND_URL}/results`, { params });
-    return res.data.results || [];
-  } catch (e) {
-    return [];
-  }
-};
-
-const fetchExamConfigs = async (className = '') => {
-  try {
-    const res = await axios.get(`${BACKEND_URL}/exam-configs`);
-    let configs = res.data.configs || [];
-    if (className) configs = configs.filter((c) => c.class === className);
-    return configs;
-  } catch (e) {
-    return [];
-  }
-};
-
-
-
-const preloadImages = async (urls) => {
-  const promises = urls.filter(Boolean).map(
-    (url) =>
-      new Promise((resolve) => {
-        const img = new window.Image();
-        img.onload = resolve;
-        img.onerror = resolve;
-        img.src = getAbsoluteUrl(url);
-      })
-  );
-  await Promise.all(promises);
-};
-
-const chunkArray = (arr, size) => {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
-};
 
 const PDFGenerator = () => {
   const [pdfType, setPdfType] = useState('result');
   const [className, setClassName] = useState('');
-  const [students, setStudents] = useState([]);
-  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [exam, setExam] = useState('');
-  const [exams, setExams] = useState([]);
+  const [exams, setExams] = useState<string[]>([]);
   const [room, setRoom] = useState('');
   const [loading, setLoading] = useState(false);
-  const pdfRef = useRef(null);
+  const [results, setResults] = useState<Record<string, any>>({});
+  const pdfRef = useRef<HTMLDivElement>(null);
 
+  // Fetch Students by Class
   useEffect(() => {
-    if (className) {
+    const fetchStudents = async () => {
+      if (!className) return;
       setLoading(true);
-      fetchStudents(className).then((sts) => {
-        setStudents(sts);
+      try {
+        const q = query(collection(db, 'students'), where('class', '==', className));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setStudents(data);
         setSelectedStudents([]);
+      } catch (err) {
+        console.error("Error fetching students:", err);
+      } finally {
         setLoading(false);
-      });
-      fetchExamConfigs(className).then((cfgs) => {
-        const allExams = Array.from(new Set(cfgs.map((c) => c.exam)));
-        setExams(allExams);
-      });
-    }
+      }
+    };
+    fetchStudents();
   }, [className]);
 
-  const handleStudentSelect = (id) => {
-    setSelectedStudents((prev) =>
-      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+  // Fetch Exam Configs by Class
+  useEffect(() => {
+    const fetchConfigs = async () => {
+      if (!className) return;
+      try {
+        const q = query(collection(db, 'exam-configs'), where('class', '==', className));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => doc.data().exam);
+        setExams([...new Set(data)] as string[]);
+      } catch (err) {
+        console.error("Error fetching configs:", err);
+      }
+    };
+    fetchConfigs();
+  }, [className]);
+
+  // Fetch results for selected students if PDF type is result
+  useEffect(() => {
+    const fetchBulkResults = async () => {
+      if (pdfType === 'result' && selectedStudents.length > 0 && exam) {
+        setLoading(true);
+        try {
+          const resMap: Record<string, any> = {};
+          await Promise.all(selectedStudents.map(async (sid) => {
+            const student = students.find(s => s.id === sid);
+            if (!student) return;
+            // Fetch by studentId (Roll/Code) from results
+            const q = query(
+              collection(db, 'exam-results'),
+              where('studentId', '==', student.studentId),
+              where('exam', '==', exam),
+              where('class', '==', student.class)
+            );
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              resMap[sid] = snapshot.docs[0].data();
+            }
+          }));
+          setResults(resMap);
+        } catch (err) {
+          console.error("Error fetching bulk results:", err);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    fetchBulkResults();
+  }, [pdfType, selectedStudents, exam, students]);
+
+  const handleStudentSelect = (id: string) => {
+    setSelectedStudents(prev =>
+      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
     );
+  };
+
+  const preloadImages = async (urls: string[]) => {
+    const promises = urls.filter(Boolean).map(url =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = getAbsoluteUrl(url);
+      })
+    );
+    await Promise.all(promises);
   };
 
   const handleGeneratePDF = async () => {
     if (!pdfRef.current) return;
-    const allStudentObjs = pdfType === 'seat' ? seatPlanStudents : selectedStudentObjs;
-    const imageUrls = [SCHOOL_LOGO, ...allStudentObjs.map((s) => s.photoUrl).filter(Boolean)];
+    const selectedStudentObjs = students.filter(s => selectedStudents.includes(s.id));
+    const imageUrls = [SCHOOL_LOGO, ...selectedStudentObjs.map(s => s.photoUrl).filter(Boolean)];
+
+    setLoading(true);
     await preloadImages(imageUrls);
+
     pdfRef.current.classList.add('pdf-mode');
-    html2pdf()
-      .set({
-        margin: [0.4, 0.4, 0.4, 0.4],
-        filename: `${pdfType}-cards.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, backgroundColor: '#fff' },
-        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
-      })
-      .from(pdfRef.current)
-      .save()
-      .finally(() => {
-        pdfRef.current.classList.remove('pdf-mode');
-      });
+
+    const opt = {
+      margin: [0.4, 0.4, 0.4, 0.4],
+      filename: `${pdfType}-cards-${Date.now()}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, backgroundColor: '#fff', useCORS: true },
+      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+    };
+
+    html2pdf().set(opt).from(pdfRef.current).save().finally(() => {
+      pdfRef.current?.classList.remove('pdf-mode');
+      setLoading(false);
+    });
   };
 
-  const selectedStudentObjs = students.filter((s) => selectedStudents.includes(s.id));
-
-  const [results, setResults] = useState({});
-  useEffect(() => {
-    if (pdfType === 'result' && selectedStudentObjs.length > 0 && exam) {
-      setLoading(true);
-      Promise.all(
-        selectedStudentObjs.map(async (student) => {
-          const resArr = await fetchResults(student.id, exam);
-          return { id: student.id, result: resArr[0] };
-        })
-      ).then((resArr) => {
-        const resMap = {};
-        resArr.forEach(({ id, result }) => {
-          resMap[id] = result;
-        });
-        setResults(resMap);
-        setLoading(false);
-      });
+  const chunkArray = (arr: any[], size: number) => {
+    const result = [];
+    for (let i = 0; i < arr.length; i += size) {
+      result.push(arr.slice(i, i + size));
     }
-  }, [pdfType, selectedStudents, exam]);
+    return result;
+  };
 
+  const selectedStudentObjs = students.filter(s => selectedStudents.includes(s.id));
   const seatPlanStudents = selectedStudentObjs.map((s, i) => ({ ...s, seat: (i + 1).toString() }));
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-4">Cards & Certificates Generator</h1>
-      <div className="flex flex-wrap gap-4 mb-6">
-        <div>
-          <label className="block font-semibold mb-1">PDF Type</label>
-          <select
-            value={pdfType}
-            onChange={(e) => setPdfType(e.target.value)}
-            className="border rounded px-2 py-1"
-          >
-            {PDF_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block font-semibold mb-1">Class</label>
-          <select
-            value={className}
-            onChange={(e) => setClassName(e.target.value)}
-            className="border rounded px-2 py-1"
-          >
-            <option value="">Select Class</option>
-            {classesList.map((cls) => (
-              <option key={cls.id} value={cls.name}>
-                {cls.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {(pdfType === 'result' || pdfType === 'admit' || pdfType === 'seat') && (
-          <div>
-            <label className="block font-semibold mb-1">Exam</label>
-            <select
-              value={exam}
-              onChange={(e) => setExam(e.target.value)}
-              className="border rounded px-2 py-1"
-            >
-              <option value="">Select Exam</option>
-              {exams.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </select>
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 bg-gray-50/50 min-h-screen">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-indigo-50 rounded-xl">
+            <Printer className="h-8 w-8 text-indigo-600" />
           </div>
-        )}
-        {pdfType === 'seat' && (
           <div>
-            <label className="block font-semibold mb-1">Room</label>
-            <input
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              className="border rounded px-2 py-1"
-              placeholder="Room No."
-            />
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Academic Documents</h1>
+            <p className="text-gray-500 text-sm">Generate official printables and student credentials</p>
           </div>
-        )}
-      </div>
-      <div className="mb-4">
-        <label className="block font-semibold mb-1">Select Students</label>
-        {loading ? (
-          <div>Loading...</div>
-        ) : (
-          <>
-            {(pdfType === 'admit' || pdfType === 'seat') && students.length > 0 && (
-              <button
-                className="mb-2 px-3 py-1 bg-blue-500 text-white rounded shadow hover:bg-blue-600"
-                onClick={() => setSelectedStudents(students.map((s) => s.id))}
-              >
-                Select All Students
-              </button>
-            )}
-            <div className="max-h-48 overflow-y-auto border rounded p-2 grid grid-cols-2 gap-2">
-              {students.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedStudents.includes(s.id)}
-                    onChange={() => handleStudentSelect(s.id)}
-                  />
-                  <span>
-                    {s.name} ({s.class})
-                  </span>
-                </label>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      <button
-        onClick={handleGeneratePDF}
-        className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
-      >
-        Download PDF
-      </button>
-      <div className="mt-8 flex justify-center">
-        <div
-          className="a4-preview"
-          style={{
-            width: '210mm',
-            height: '297mm',
-            background: '#fff',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-            position: 'relative',
-            margin: '0 auto',
-            padding: 0,
-            display: 'block',
-          }}
-          ref={pdfRef}
-          id="pdf-preview"
+        </div>
+        <Button
+          onClick={handleGeneratePDF}
+          disabled={selectedStudents.length === 0 || loading}
+          className="bg-indigo-600 hover:bg-indigo-700 shadow-lg"
         >
-          <style>{`
-            .a4-preview {
-              background: #fff !important;
-              color: #222 !important;
-              width: 210mm !important;
-              height: 297mm !important;
-              box-sizing: border-box !important;
-              overflow: hidden !important;
-              margin: 0 auto !important;
-              padding: 0 !important;
-              position: relative !important;
-            }
-            .card-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              grid-template-rows: repeat(3, 1fr);
-              gap: 0;
-              width: 100%;
-              height: 100%;
-              page-break-after: always;
-            }
-            .admit-card, .seat-card {
-              width: 90mm !important;
-              height: 45mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #fff !important;
-              border: 1px solid #bbb !important;
-              box-sizing: border-box !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              align-items: center !important;
-            }
-            .id-card {
-              width: 90mm !important;
-              height: 55mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #fff !important;
-              border: 1px solid #bbb !important;
-              box-sizing: border-box !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              align-items: center !important;
-            }
-            .result-card {
-              width: 100% !important;
-              min-height: 100mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #fff !important;
-              border: 1px solid #bbb !important;
-              box-sizing: border-box !important;
-              page-break-after: always !important;
-            }
-            @media (max-width: 900px) {
-              .a4-preview {
-                width: 100vw !important;
-                height: auto !important;
-                min-height: 100vh !important;
-              }
-              .card-grid {
-                grid-template-columns: 1fr !important;
-                grid-template-rows: none !important;
-              }
-            }
-          `}</style>
-          {/* PDF Preview */}
-          {pdfType === 'result' && chunkArray(selectedStudentObjs, 1).map((chunk, pageIdx) => (
-            <div key={pageIdx} className="result-card">
-              <ResultCard
-                student={chunk[0]}
-                result={results[chunk[0].id] ? {
-                  exam: results[chunk[0].id].exam,
-                  subjects: Object.entries(results[chunk[0].id].subjects || {}).map(([subject, mark]) => ({ subject, mark: String(mark) })),
-                  total: results[chunk[0].id].total,
-                  rank: results[chunk[0].id].rank,
-                } : { exam, subjects: [], total: '', rank: '' }}
-                schoolName={SCHOOL_NAME}
-                schoolLogoUrl={SCHOOL_LOGO}
-              />
+          {loading ? (
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+              Processing...
             </div>
-          ))}
-          {pdfType === 'admit' && chunkArray(selectedStudentObjs, 6).map((chunk, pageIdx) => (
-            <div key={pageIdx} className="card-grid">
-              {chunk.map((student) => (
-                <div key={student.id} className="admit-card">
-                  <AdmitCard
-                    students={[student]}
-                    exam={exam}
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-2" />
+              Generate PDF ({selectedStudents.length})
+            </>
+          )}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Configuration Sidebar */}
+        <div className="lg:col-span-4 space-y-6">
+          <Card className="border-none shadow-sm h-full">
+            <CardHeader className="border-b border-gray-50">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Settings2 className="h-5 w-5 text-indigo-500" />
+                Print Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className="space-y-3">
+                <Label className="text-xs font-bold uppercase text-gray-400">Document Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {PDF_TYPES.map((t) => (
+                    <button
+                      key={t.value}
+                      onClick={() => setPdfType(t.value)}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all gap-2",
+                        pdfType === t.value
+                          ? "border-indigo-600 bg-indigo-50/50 shadow-sm"
+                          : "border-gray-100 hover:border-gray-200 bg-white"
+                      )}
+                    >
+                      <t.icon className={cn("h-6 w-6", pdfType === t.value ? "text-indigo-600" : "text-gray-400")} />
+                      <span className={cn("text-[10px] font-bold uppercase", pdfType === t.value ? "text-indigo-900" : "text-gray-500")}>
+                        {t.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Academic Class</Label>
+                  <Select value={className} onValueChange={setClassName}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Select Class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classesList.map(cls => <SelectItem key={cls.id} value={cls.name}>{cls.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(pdfType === 'result' || pdfType === 'admit' || pdfType === 'seat') && (
+                  <div className="space-y-2">
+                    <Label>Target Examination</Label>
+                    <Select value={exam} onValueChange={setExam} disabled={!className}>
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Select Exam" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {exams.length > 0 ? exams.map(ex => <SelectItem key={ex} value={ex}>{ex}</SelectItem>) : <SelectItem value="none" disabled>No exams found</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {pdfType === 'seat' && (
+                  <div className="space-y-2">
+                    <Label>Examination Hall / Room</Label>
+                    <Input
+                      value={room}
+                      onChange={(e) => setRoom(e.target.value)}
+                      placeholder="e.g. Room 302"
+                      className="bg-white"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold uppercase text-gray-400">Target Students</Label>
+                  {students.length > 0 && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={() => setSelectedStudents(students.map(s => s.id))}
+                      className="text-[10px] h-auto p-0 text-indigo-600"
+                    >
+                      Select All
+                    </Button>
+                  )}
+                </div>
+
+                <div className="max-h-[300px] overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                  {loading && <p className="text-center text-xs text-gray-400 py-4">Loading student directory...</p>}
+                  {!loading && students.length === 0 && (
+                    <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                      <Users className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-[10px] text-gray-400">Select a class to list students</p>
+                    </div>
+                  )}
+                  {students.map((s) => (
+                    <div
+                      key={s.id}
+                      onClick={() => handleStudentSelect(s.id)}
+                      className={cn(
+                        "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors border",
+                        selectedStudents.includes(s.id) ? "bg-indigo-50 border-indigo-100" : "hover:bg-gray-50 border-transparent"
+                      )}
+                    >
+                      <Checkbox checked={selectedStudents.includes(s.id)} onCheckedChange={() => handleStudentSelect(s.id)} />
+                      <div className="flex-1 overflow-hidden">
+                        <p className="text-xs font-bold text-gray-800 truncate">{s.name}</p>
+                        <p className="text-[9px] text-gray-400 font-mono">{s.studentId}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Preview Area */}
+        <div className="lg:col-span-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-indigo-100 text-indigo-700 border-none px-3">Live Preview</Badge>
+              <span className="text-[10px] text-gray-400">Scale: A4 (Portrait)</span>
+            </div>
+            <p className="text-[10px] text-gray-500 italic">Formatting for 210mm x 297mm print area</p>
+          </div>
+
+          <div className="preview-container bg-gray-200/50 rounded-2xl p-8 overflow-auto flex justify-center shadow-inner h-[800px] border-4 border-white">
+            <div
+              className="a4-sheet bg-white shadow-2xl origin-top"
+              style={{
+                width: '210mm',
+                minHeight: '297mm',
+                boxSizing: 'border-box',
+                padding: '0',
+                position: 'relative',
+              }}
+              ref={pdfRef}
+            >
+              <style>{`
+                .a4-sheet {
+                  background: #fff !important;
+                }
+                .pdf-grid {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  grid-template-rows: repeat(3, 1fr);
+                  width: 100%;
+                  height: 297mm;
+                  page-break-after: always;
+                }
+                .pdf-item-container {
+                  border: 1px dashed #eee;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 10px;
+                  box-sizing: border-box;
+                }
+                .pdf-result-card-container {
+                  width: 100%;
+                  padding: 20mm 15mm;
+                  box-sizing: border-box;
+                  page-break-after: always;
+                }
+                @media print {
+                  .pdf-grid { border: none; }
+                  .pdf-item-container { border: none !important; }
+                }
+              `}</style>
+
+              {selectedStudentObjs.length === 0 && (
+                <div className="flex flex-col items-center justify-center p-20 text-gray-300 opacity-50 h-[297mm]">
+                  <Printer className="h-20 w-20 mb-4" />
+                  <p className="text-xl font-bold uppercase tracking-widest">Document Workspace</p>
+                  <p className="text-sm">Select students to generate live preview</p>
+                </div>
+              )}
+
+              {/* PDF Preview Content */}
+              {pdfType === 'result' && selectedStudentObjs.map((student) => (
+                <div key={student.id} className="pdf-result-card-container">
+                  <ResultCard
+                    student={student}
+                    result={results[student.id] ? {
+                      exam: results[student.id].exam,
+                      subjects: Object.entries(results[student.id].subjects || {}).map(([subject, mark]) => ({ subject, mark: String(mark) })),
+                      total: results[student.id].total,
+                      rank: results[student.id].rank,
+                    } : { exam, subjects: [], total: '', rank: '' }}
                     schoolName={SCHOOL_NAME}
                     schoolLogoUrl={SCHOOL_LOGO}
                   />
                 </div>
               ))}
-            </div>
-          ))}
-          {pdfType === 'seat' && chunkArray(seatPlanStudents, 6).map((chunk, pageIdx) => (
-            <div key={pageIdx} className="card-grid">
-              {chunk.map((student) => (
-                <div key={student.id} className="seat-card">
-                  <SeatPlan
-                    students={[student]}
-                    exam={exam}
-                    room={room}
-                    schoolName={SCHOOL_NAME}
-                    schoolLogoUrl={SCHOOL_LOGO}
-                  />
+
+              {(pdfType === 'admit' || pdfType === 'seat' || pdfType === 'id') && chunkArray(selectedStudentObjs, 6).map((chunk, pageIdx) => (
+                <div key={pageIdx} className="pdf-grid">
+                  {chunk.map((student, i) => (
+                    <div key={student.id} className="pdf-item-container">
+                      {pdfType === 'admit' && (
+                        <AdmitCard
+                          students={[student]}
+                          exam={exam}
+                          schoolName={SCHOOL_NAME}
+                          schoolLogoUrl={SCHOOL_LOGO}
+                        />
+                      )}
+                      {pdfType === 'seat' && (
+                        <SeatPlan
+                          students={[student]}
+                          exam={exam}
+                          room={room}
+                          schoolName={SCHOOL_NAME}
+                          schoolLogoUrl={SCHOOL_LOGO}
+                        />
+                      )}
+                      {pdfType === 'id' && (
+                        <IDCard
+                          students={[student]}
+                          schoolName={SCHOOL_NAME}
+                          schoolLogoUrl={SCHOOL_LOGO}
+                        />
+                      )}
+                    </div>
+                  ))}
+                  {/* Fill empty cells to maintain grid */}
+                  {[...Array(6 - chunk.length)].map((_, i) => (
+                    <div key={`empty-${i}`} className="pdf-item-container"></div>
+                  ))}
                 </div>
               ))}
             </div>
-          ))}
-          {pdfType === 'id' && chunkArray(selectedStudentObjs, 6).map((chunk, pageIdx) => (
-            <div key={pageIdx} className="card-grid">
-              {chunk.map((student) => (
-                <div key={student.id} className="id-card">
-                  <IDCard
-                    students={[student]}
-                    schoolName={SCHOOL_NAME}
-                    schoolLogoUrl={SCHOOL_LOGO}
-                  />
-                </div>
-              ))}
-            </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>

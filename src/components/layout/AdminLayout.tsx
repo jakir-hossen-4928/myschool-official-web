@@ -68,10 +68,11 @@ export const AdminLayout = () => {
         { path: '/admin/fee-collection', label: 'Fee Collection', icon: <BarChart3 className="h-4 w-4" /> },
         { path: '/admin/fee-settings', label: 'Fee Settings', icon: <SettingsIcon className="h-4 w-4" /> },
         { path: '/admin/custom-student-fees', label: 'Custom Student Fees', icon: <ListTodo className="h-4 w-4" /> },
-        { path: '/admin/fund-tracker', label: 'Fund Tracker', icon: <Briefcase className="h-4 w-4" /> },
+        { path: '/admin/fee-analytics', label: 'Finance Analytics', icon: <BarChart3 className="h-4 w-4" /> },
         { path: '/admin/fee-management-tour', label: 'Fee Guide', icon: <ListTodo className="h-4 w-4" /> },
       ]
     },
+
     {
       id: 'operations',
       label: 'Operations',
@@ -81,15 +82,14 @@ export const AdminLayout = () => {
         { path: '/admin/assets-management', label: 'Assets Management', icon: <Briefcase className="h-4 w-4" /> },
         { path: '/admin/sms-service', label: 'SMS Service', icon: <MessageSquare className="h-4 w-4" /> },
         { path: '/admin/myschool-suite', label: 'Content Generator', icon: <Bot className="h-4 w-4" /> },
-        { path: '/admin/marketing', label: 'Marketing Leads', icon: <Target className="h-4 w-4" /> },
         { path: '/admin/devices', label: 'Login Devices', icon: <Shield className="h-4 w-4" /> },
       ]
     }
   ];
 
   const toggleMenu = (menuId: string) => {
-    setExpandedMenus(prev => 
-      prev.includes(menuId) 
+    setExpandedMenus(prev =>
+      prev.includes(menuId)
         ? prev.filter(id => id !== menuId)
         : [...prev, menuId]
     );
@@ -176,14 +176,14 @@ export const AdminLayout = () => {
               {item.icon}
               <span>{item.label}</span>
             </div>
-            <ChevronDown 
+            <ChevronDown
               className={cn(
                 "h-4 w-4 transition-transform duration-200",
                 isExpanded ? "rotate-180" : ""
-              )} 
+              )}
             />
           </button>
-          
+
           {isExpanded && (
             <ul className="mt-1 ml-6 space-y-1">
               {item.items.map((subItem: any) => (
@@ -228,128 +228,128 @@ export const AdminLayout = () => {
 
   return (
     <div className="flex h-screen bg-gray-100">
-    {/* Desktop Sidebar */}
-    <aside
-      className={cn(
-        "bg-school-primary text-white fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}
-    >
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between p-4 border-b border-school-dark">
-          <Link to="/admin" className="flex items-center space-x-2">
-            <School className="h-8 w-8" />
-            <span className="text-xl font-bold">School Admin</span>
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden text-white hover:bg-school-dark"
-            onClick={toggleSidebar}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-
-        <nav className="flex-1 py-4 overflow-y-auto">
-          <ul className="space-y-1 px-2">
-              {navigationItems.map(renderMenuItem)}
-          </ul>
-        </nav>
-
-        <div className="p-4 border-t border-school-dark">
-          <Button
-            variant="outline"
-            className="w-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-5 w-5 mr-2" />
-            Logout
-          </Button>
-        </div>
-      </div>
-    </aside>
-
-    {/* Main Content */}
-    <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
-      {/* Top Navbar */}
-      <header className="bg-white shadow-sm z-30">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center">
+      {/* Desktop Sidebar */}
+      <aside
+        className={cn(
+          "bg-school-primary text-white fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between p-4 border-b border-school-dark">
+            <Link to="/admin" className="flex items-center space-x-2">
+              <School className="h-8 w-8" />
+              <span className="text-xl font-bold">School Admin</span>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
-              className="mr-2 lg:hidden"
-              onClick={toggleMobileMenu}
-            >
-              <Menu className="h-6 w-6" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden lg:flex"
+              className="lg:hidden text-white hover:bg-school-dark"
               onClick={toggleSidebar}
             >
-              <Menu className="h-6 w-6" />
+              <X className="h-5 w-5" />
             </Button>
-            <h1 className="text-xl font-semibold text-gray-800 ml-2">
-                {getCurrentPageTitle()}
-            </h1>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600 hidden md:inline">Administrator</span>
+          <nav className="flex-1 py-4 overflow-y-auto">
+            <ul className="space-y-1 px-2">
+              {navigationItems.map(renderMenuItem)}
+            </ul>
+          </nav>
+
+          <div className="p-4 border-t border-school-dark">
             <Button
-              variant="ghost"
-              size="sm"
-              className="text-gray-600"
+              variant="outline"
+              className="w-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
               onClick={handleLogout}
             >
-              <LogOut className="h-4 w-4 mr-2" />
+              <LogOut className="h-5 w-5 mr-2" />
               Logout
             </Button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={toggleMobileMenu}></div>
-          <div className="absolute top-0 left-0 w-64 h-full bg-school-primary text-white">
-            <div className="flex items-center justify-between p-4 border-b border-school-dark">
-              <Link to="/admin" className="flex items-center space-x-2" onClick={toggleMobileMenu}>
-                <School className="h-8 w-8" />
-                <span className="text-xl font-bold">School Admin</span>
-              </Link>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+        {/* Top Navbar */}
+        <header className="bg-white shadow-sm z-30">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center">
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-white hover:bg-school-dark"
+                className="mr-2 lg:hidden"
                 onClick={toggleMobileMenu}
               >
-                <X className="h-5 w-5" />
+                <Menu className="h-6 w-6" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden lg:flex"
+                onClick={toggleSidebar}
+              >
+                <Menu className="h-6 w-6" />
+              </Button>
+              <h1 className="text-xl font-semibold text-gray-800 ml-2">
+                {getCurrentPageTitle()}
+              </h1>
             </div>
 
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600 hidden md:inline">Administrator</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-600"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div className="absolute inset-0 bg-black/50" onClick={toggleMobileMenu}></div>
+            <div className="absolute top-0 left-0 w-64 h-full bg-school-primary text-white">
+              <div className="flex items-center justify-between p-4 border-b border-school-dark">
+                <Link to="/admin" className="flex items-center space-x-2" onClick={toggleMobileMenu}>
+                  <School className="h-8 w-8" />
+                  <span className="text-xl font-bold">School Admin</span>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-school-dark"
+                  onClick={toggleMobileMenu}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
               <nav className="py-4 overflow-y-auto">
-              <ul className="space-y-1 px-2">
+                <ul className="space-y-1 px-2">
                   {navigationItems.map((item) => {
                     if (item.type === 'single') {
                       return (
                         <li key={item.id}>
-                    <Link
-                      to={item.path}
-                      className={cn(
-                        "flex items-center space-x-3 px-4 py-3 rounded-md transition-colors duration-200",
+                          <Link
+                            to={item.path}
+                            className={cn(
+                              "flex items-center space-x-3 px-4 py-3 rounded-md transition-colors duration-200",
                               isActivePath(item.path)
-                          ? "bg-white/20 text-white font-medium"
-                          : "text-white/80 hover:bg-white/10 hover:text-white"
-                      )}
-                      onClick={toggleMobileMenu}
-                    >
-                      {item.icon}
-                      <span>{item.label}</span>
+                                ? "bg-white/20 text-white font-medium"
+                                : "text-white/80 hover:bg-white/10 hover:text-white"
+                            )}
+                            onClick={toggleMobileMenu}
+                          >
+                            {item.icon}
+                            <span>{item.label}</span>
                           </Link>
                         </li>
                       );
@@ -374,14 +374,14 @@ export const AdminLayout = () => {
                               {item.icon}
                               <span>{item.label}</span>
                             </div>
-                            <ChevronDown 
+                            <ChevronDown
                               className={cn(
                                 "h-4 w-4 transition-transform duration-200",
                                 isExpanded ? "rotate-180" : ""
-                              )} 
+                              )}
                             />
                           </button>
-                          
+
                           {isExpanded && (
                             <ul className="mt-1 ml-6 space-y-1">
                               {item.items.map((subItem: any) => (
@@ -398,9 +398,9 @@ export const AdminLayout = () => {
                                   >
                                     {subItem.icon}
                                     <span>{subItem.label}</span>
-                    </Link>
-                  </li>
-                ))}
+                                  </Link>
+                                </li>
+                              ))}
                             </ul>
                           )}
                         </li>
@@ -409,29 +409,29 @@ export const AdminLayout = () => {
 
                     return null;
                   })}
-              </ul>
-            </nav>
+                </ul>
+              </nav>
 
-            <div className="p-4 border-t border-school-dark">
-              <Button
-                variant="outline"
-                className="w-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
-                onClick={handleLogout}
-              >
-                <LogOut className="h-5 w-5 mr-2" />
-                Logout
-              </Button>
+              <div className="p-4 border-t border-school-dark">
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-5 w-5 mr-2" />
+                  Logout
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto p-4">
-        <Outlet />
-      </main>
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto p-4">
+          <Outlet />
+        </main>
+      </div>
     </div>
-  </div>
   );
 };
 

@@ -36,13 +36,15 @@ const FeeCollection = lazy(() => import("@/adminDasboard/accounts/FeeCollection"
 const FeeSettings = lazy(() => import("@/adminDasboard/accounts/FeeSettings"));
 const CustomStudentFees = lazy(() => import("@/adminDasboard/accounts/CustomStudentFees"));
 const FeeManagementTour = lazy(() => import("@/adminDasboard/accounts/FeeManagementTour"));
-const FundTracker = lazy(() => import("@/adminDasboard/accounts/FundTraker"));
+const FinanceAnalytics = lazy(() => import("@/adminDasboard/accounts/FinanceAnalytics"));
+
+
 const AcademicRoutine = lazy(() => import("@/adminDasboard/academic/AcademicRoutine"));
 const TeachersPanel = lazy(() => import("@/adminDasboard/teachers/TeachersPanel"));
 const SmsService = lazy(() => import("@/adminDasboard/smsservcie/SmsService"));
 const ContentGanarator = lazy(() => import("@/adminDasboard/contentganarate/ContentGanarator"));
 const AssetsManegment = lazy(() => import("@/adminDasboard/assestManegment/AssetsManegment"));
-const Marketing = lazy(() => import("@/adminDasboard/marketing/Marketing"));
+
 const ExamManagement = lazy(() => import("@/adminDasboard/academic/ExamManagement"));
 const CardsCertificates = lazy(() => import("@/adminDasboard/academic/PDFGenerator"));
 
@@ -188,14 +190,7 @@ const AppRoutes = () => {
           }
         />
 
-        <Route
-          path="accounts&fund"
-          element={
-            <Suspense fallback={<Loading />}>
-              <FundTracker />
-            </Suspense>
-          }
-        />
+
         <Route
           path="fee-collection"
           element={
@@ -229,13 +224,15 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="fund-tracker"
+          path="fee-analytics"
           element={
             <Suspense fallback={<Loading />}>
-              <FundTracker />
+              <FinanceAnalytics />
             </Suspense>
           }
         />
+
+
         <Route
           path="academic"
           element={
@@ -244,14 +241,7 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route
-          path="marketing"
-          element={
-            <Suspense fallback={<Loading />}>
-              <Marketing />
-            </Suspense>
-          }
-        />
+
         <Route
           path="staff"
           element={
